@@ -130,3 +130,26 @@ def test_connect_symbol_graph_simple_defs_with_or(simple_def_without_or: str, si
     generated_symbol_graph_output = connect_symbol_graph(symbol_sink_graph, symbol_source_graph)
 
     assert true_symbol_graph_output == generated_symbol_graph_output
+
+
+def test_connect_symbol_graph_defs_with_regex_and_or(simple_def_with_or: str, def_with_regex_and_or: str):
+    symbols = {
+            'SOURCE': Symbol('SOURCE', SymbolType.NOT_TERMINAL),
+            'factor': Symbol('factor', SymbolType.NOT_TERMINAL),
+            '"+"': Symbol('"+"', SymbolType.TERMINAL),
+            '"-"': Symbol('"-"', SymbolType.TERMINAL),
+            'Regex([0-9]*.[0-9]*)': Symbol('[0-9]*.[0-9]*', SymbolType.REGEX),
+            '"("': Symbol('"("', SymbolType.TERMINAL),
+            'expression': Symbol('expression', SymbolType.NOT_TERMINAL),
+            '")"': Symbol('")"', SymbolType.TERMINAL),
+            'SINK': Symbol('SINK', SymbolType.NOT_TERMINAL),
+    }
+
+    true_symbol_graph_output = defaultdict(set, 
+            {symbols['SOURCE']: {symbols['factor']}, symbols['factor']: {symbols['"+"'], symbols['"-"']}, symbols['"("']: {symbols['expression']}, symbols['expression']: {symbols['")"']}, symbols['"+"']: {symbols['Regex([0-9]*.[0-9]*)'], symbols['"-"'], symbols['"("']}, symbols['"-"']: {symbols['Regex([0-9]*.[0-9]*)'], symbols['factor'], symbols['"("']}, symbols['SINK']: {symbols['Regex([0-9]*.[0-9]*)'], symbols['factor'], symbols['")"']}}) 
+
+    symbol_sink_graph = construct_symbol_graph(simple_def_with_or)
+    symbol_source_graph = construct_symbol_graph(def_with_regex_and_or)
+    generated_symbol_graph_output = connect_symbol_graph(symbol_sink_graph, symbol_source_graph)
+
+    assert true_symbol_graph_output == generated_symbol_graph_output
