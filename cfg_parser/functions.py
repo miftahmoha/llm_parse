@@ -32,30 +32,41 @@ def find_symbol_antecedent(
         if search_symbol in symbol_children:
             return symbol_parent
 
-    raise SymbolNotFound(f"Symbol was not found.")
+    raise SymbolNotFound(f"Symbol {search_symbol.content} was not found.")
 
 
-# [TODO] Needs to be fixed.
-def get_special_symbol(
-    symbol_graph: dict[Symbol, OrderedSet[Symbol]], symbol_str: str
-) -> Symbol:
+def get_source_and_sink_special_symbols(
+    symbol_graph: dict[Symbol, OrderedSet[Symbol]]
+    ) -> list[Symbol]: 
+    special_symbols = []
+    
     for symbol in symbol_graph:
-        if symbol.content == symbol_str:
-            return symbol
+        if symbol.content == "SOURCE" or symbol.content == "SINK":
+            special_symbols = special_symbols + [symbol]
 
-    return Symbol("ERROR", SymbolType.SPECIAL)
+    if len(special_symbols) in [0, 1]:
+        raise SymbolNotFound(f"Special symbol `SOURCE` or `SINK` was not found.")
+
+    return special_symbols
+
+def get_source_and_sink_symbols_content(symbol_graph: dict[Symbol, OrderedSet[Symbol]]) -> tuple[OrderedSet, OrderedSet]:
+        special_symbol_source, special_symbol_sink = get_source_and_sink_special_symbols(symbol_graph)
+        symbol_graph_source, symbol_graph_sink = symbol_graph[special_symbol_source], symbol_graph[special_symbol_sink]
+        return symbol_graph_source, symbol_graph_sink
 
 
-def check_definition(symbol_def: str):
+
+def check_for_errors(symbol_def: str):
     # [TODO] Throws the corresponding exceptions.
     pass
 
 
-# [TODO] Need additional ( ) at the beggining for `build_full_graph` to work.
+# [TODO] Need additional initial `( )` for `build_full_graph` to start.
 def insert_standard_delimiters(symbol_def: str):
     return "(" + symbol_def + ")"
 
 
+# Insert space between delimiters, `terminal` delimiters `"(", ")", "[", "]", "{", "}"` are not considered.
 def insert_space_between_delimiters(s):
     in_quote = False
     in_regex = False
@@ -88,8 +99,6 @@ def pre_process_symbol_def(symbol_def: str):
 
 
 def convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
-    check_definition(symbol_def)
-
     pre_processed_symbol_def = pre_process_symbol_def(symbol_def)
     symbols = pre_processed_symbol_def.split()
 
@@ -103,20 +112,20 @@ def convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
 def get_symbols_from_generated_symbol_graph(
     generated_symbol_graph: dict[Symbol, OrderedSet[Symbol]]
 ) -> dict[str, Symbol]:
-    start = generated_symbol_graph[get_special_symbol(generated_symbol_graph, "SOURCE")]
+    symbols: dict[str, Symbol] = {}
+
+    # Adding the SOURCE and the SINK
+    symbols["SOURCE"], symbols["SINK"] = get_source_and_sink_special_symbols(generated_symbol_graph)
+
+    start = generated_symbol_graph[symbols["SOURCE"]]
     visited = dfs(deepcopy(generated_symbol_graph), start)
 
     # The reason '"-"' is swapped is because the second one is in the keys.
-    symbols: dict[str, Symbol] = {}
     # The default int is OrderedSet to 0.
     order: dict[str, int] = defaultdict(int)
     for symbol in visited:
         symbols[symbol.content + f"|{order[symbol.content]}"] = symbol
         order[symbol.content] += 1
-
-    # Adding the SOURCE and the SINK
-    symbols["SOURCE"] = get_special_symbol(generated_symbol_graph, "SOURCE")
-    symbols["SINK"] = get_special_symbol(generated_symbol_graph, "SINK")
 
     return symbols
 
@@ -126,11 +135,14 @@ def dfs(
     symbol_graph: dict[Symbol, OrderedSet[Symbol]], start: OrderedSet[Symbol]
 ) -> list[Symbol]:
     visited = []
+
     queue = deque()  # type: ignore
     queue.extend(list(start))
+
     while queue:
         vertex = queue.popleft()
         if vertex not in visited:
             visited.append(vertex)
             queue.extend(symbol_graph[vertex])
+
     return visited

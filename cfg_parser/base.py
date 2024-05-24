@@ -18,6 +18,10 @@ class OrderedSet(Generic[T]):
         if item in self._dict:
             self._dict.pop(item)
 
+    def extend(self, other) -> None:
+        for symbol in other:
+            self.add(symbol)
+
     def __contains__(self, item: T) -> bool:
         return item in self._dict
 
