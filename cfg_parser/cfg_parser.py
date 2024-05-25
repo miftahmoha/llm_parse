@@ -9,6 +9,7 @@ from cfg_parser.functions import (
     get_source_and_sink_special_symbols,
     get_source_and_sink_symbols_content,
 )
+from cfg_parser.draw import draw_symbol_graph
 
 
 def construct_symbol_subgraph(
@@ -46,26 +47,46 @@ def construct_symbol_subgraph(
     if graph_type == SymbolGraphType.NONE_ANY:
         # Add a `EOS_TOKEN` to the SOURCE, since it can be `NONE`.
         # Add a loop since it's a `(A..Z)*` expression, last element `Z` should connect to the first element `A`.
-        # Should add a `EOS_TOKEN` to `A` and `Z` if `Z` is not connected to any node.
-        # (Always add it), if it's connected to some node remove it afterwards.
-        # How? During connection, we'll have `EOS_TOKEN` -> `Node` -> replace `EOS_TOKEN` with the antecedent of `EOS_TOKEN`, disconnect antecedent from 'EOS_TOKEN`.
+        # Should add a `EOS_TOKEN` to `A` and `Z` (symbols should be different) if `Z` is not connected to any node (always add it, if it's connected to some node remove it afterwards while connecting the graphs)
+        # How?
+        # During connection, we'll have `EOS_TOKEN` -> `Node` -> replace `EOS_TOKEN` with the antecedent of `EOS_TOKEN`, disconnect antecedent from 'EOS_TOKEN`.
         # Each node has a unique identifier, so we'll always be able to track the right antecedent.
 
-        # [TODO] Add loop Z -> A (connect the SINK to the SOURCE).
-        symbol_graph[symbol_source] = symbol_graph[symbol_sink] = (
-            symbol_graph[symbol_source] | symbol_graph[symbol_sink]
+        # Create a `SPECIAL` symbol `EOS_TOKEN for both `SOURCE` and `SINK`.
+        symbol_eos_source = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
+        symbol_eos_sink = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
+
+        # Connecting the loop
+        symbol_graph_source, symbol_graph_sink = get_source_and_sink_symbols_content(
+            symbol_graph
         )
 
-        # Add `EOS_TOKEN` to SOURCE and SINK.
-        symbol_eot = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
-        symbol_graph[symbol_source].add(symbol_eot)
-        symbol_graph[symbol_sink].add(symbol_eot)
+        for symbol_sink_elem in symbol_graph_sink:
+            for symbol_source_elem in symbol_graph_source:
+                symbol_graph[symbol_sink_elem].add(symbol_source_elem)
+
+            symbol_graph[symbol_sink_elem].add(symbol_eos_sink)
+
+        # symbol_graph_union_source_sink = (
+        #     symbol_graph[symbol_source] | symbol_graph[symbol_sink]
+        # )
+
+        # Avoid that `symbol_graph[symbol_source]` and `symbol_graph[symbol_sink]` from referencing the same object,
+        # thus modifying `symbol_graph[symbol_source]` will impact `symbol_graph[symbol_sink]`.
+        # symbol_graph[symbol_source] = symbol_graph_union_source_sink.copy()
+        # symbol_graph[symbol_sink] = symbol_graph_union_source_sink.copy()
+
+        # Add a `EOS_TOKEN` to the `SOURCE`, since it can be `NONE`.
+        symbol_graph[symbol_source].add(symbol_eos_source)
+        # Add a `EOS_TOKEN` to the `SINK`, since it has to stop at some point (gets removed
+        # if the graph of type `NONE_ANY` is connected to some other graph).
+        symbol_graph[symbol_sink].add(symbol_eos_sink)
 
     elif graph_type == SymbolGraphType.NONE_ONCE:
         # Add a `EOS_TOKEN` to the SOURCE, since it can be `NONE`.
-        # Add `EOS_TOKEN` to the SOURCE
-        symbol_eot = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
-        symbol_graph[symbol_source].add(symbol_eot)
+        # Add `EOS_TOKEN` to the SOURCE.
+        symbol_eos = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
+        symbol_graph[symbol_source].add(symbol_eos)
 
     return symbol_graph
 
@@ -83,32 +104,31 @@ def connect_symbol_graph(
     elif not symbol_graph_right:
         return symbol_graph_left
 
-    # Avoid modifying the original dicts.
+    # Passing by value and not by reference, avoids modifying the original dicts.
     symbol_graph_left_copy = symbol_graph_left.copy()
     symbol_graph_right_copy = symbol_graph_right.copy()
 
     # Retrieves the special symbols `SOURCE` and `SINK`, they're unique to each `symbol_graph`.
-    _, symbol_special_sink_left = get_source_and_sink_special_symbols(symbol_graph_left)
-    symbol_special_source_right, _ = get_source_and_sink_special_symbols(
-        symbol_graph_right
+    _, symbol_special_sink_left_copy = get_source_and_sink_special_symbols(
+        symbol_graph_left_copy
+    )
+    symbol_special_source_right_copy, _ = get_source_and_sink_special_symbols(
+        symbol_graph_right_copy
     )
 
-    symbol_graph_right_source = symbol_graph_right[symbol_special_source_right]
-    symbol_graph_right_copy.pop(symbol_special_source_right)
+    symbol_graph_right_source_copy = symbol_graph_right_copy[
+        symbol_special_source_right_copy
+    ]
+    symbol_graph_right_copy.pop(symbol_special_source_right_copy)
 
-    symbol_graph_left_sink = symbol_graph_left[symbol_special_sink_left]
-    symbol_graph_left_copy.pop(symbol_special_sink_left)
+    symbol_graph_left_sink_copy = symbol_graph_left[symbol_special_sink_left_copy]
+    symbol_graph_left_copy.pop(symbol_special_sink_left_copy)
 
     # Merges two `symbol_graphs`, the left without its `SINK` and the right without its `SOURCE`.
-    # symbol_graph_output = symbol_graph_left | symbol_graph_right
     symbol_graph_output = symbol_graph_left_copy | symbol_graph_right_copy
 
-    for symbol_sink_elem in symbol_graph_left_sink:
-        for symbol_source_elem in symbol_graph_right_source:
-
-            # Avoids duplicates, (SINK) -> OrderedSet{(1), (2)}; (SOURCE) -> OrderedSet{(1), (?)} >>>>>> AVOIDS (1) -> (1).
-            # if symbol_sink_elem == symbol_source_elem:
-            # continue
+    for symbol_sink_elem in symbol_graph_left_sink_copy:
+        for symbol_source_elem in symbol_graph_right_source_copy:
 
             # Need to deal with the `EOS_TOKEN` case for `NONE_ANY` types of graphs.
             if symbol_sink_elem.content == "EOS_TOKEN":
@@ -128,6 +148,7 @@ def connect_symbol_graph(
     return symbol_graph_output
 
 
+# [TODO] Very verbose, need something more elegant.
 def union_symbol_graph(
     symbol_graph_left: dict[Symbol, OrderedSet[Symbol]],
     symbol_graph_right: dict[Symbol, OrderedSet[Symbol]],
@@ -144,44 +165,45 @@ def union_symbol_graph(
     symbol_special_source = Symbol("SOURCE", SymbolType.SPECIAL)
     symbol_special_sink = Symbol("SINK", SymbolType.SPECIAL)
 
-    # Avoid modifying the original dicts.
+    # Passing by value and not by reference, avoids modifying the original dicts.
     symbol_graph_left_copy = symbol_graph_left.copy()
     symbol_graph_right_copy = symbol_graph_right.copy()
 
     # Retrieves the special symbols `SOURCE` and `SINK` for the left graph.
-    symbol_graph_right_source, symbol_graph_right_sink = (
-        get_source_and_sink_symbols_content(symbol_graph_right)
+    symbol_graph_right_source_copy, symbol_graph_right_sink_copy = (
+        get_source_and_sink_symbols_content(symbol_graph_right_copy)
     )
 
     # Retrieves the special symbols `SOURCE` and `SINK` for the left graph.
-    symbol_graph_left_source, symbol_graph_left_sink = (
-        get_source_and_sink_symbols_content(symbol_graph_left)
+    symbol_graph_left_source_copy, symbol_graph_left_sink_copy = (
+        get_source_and_sink_symbols_content(symbol_graph_left_copy)
     )
 
     # Retrieves the content of `SOURCE` and `SINK` for the left symbol graph.
-    symbol_special_source_left, symbol_special_sink_left = (
-        get_source_and_sink_special_symbols(symbol_graph_left)
+    symbol_special_source_left_copy, symbol_special_sink_left_copy = (
+        get_source_and_sink_special_symbols(symbol_graph_left_copy)
     )
-    symbol_graph_left_copy.pop(symbol_special_source_left)
-    symbol_graph_left_copy.pop(symbol_special_sink_left)
 
-    # Retrieves the content of `SOURCE` and `SINK` for the left symbol graph.
-    symbol_special_source_right, symbol_special_sink_right = (
-        get_source_and_sink_special_symbols(symbol_graph_right)
+    symbol_graph_left_copy.pop(symbol_special_source_left_copy)
+    symbol_graph_left_copy.pop(symbol_special_sink_left_copy)
+
+    # Retrieves the content of `SOURCE` and `SINK` for the right symbol graph.
+    symbol_special_source_right_copy, symbol_special_sink_right_copy = (
+        get_source_and_sink_special_symbols(symbol_graph_right_copy)
     )
-    symbol_graph_right_copy.pop(symbol_special_source_right)
-    symbol_graph_right_copy.pop(symbol_special_sink_right)
+    symbol_graph_right_copy.pop(symbol_special_source_right_copy)
+    symbol_graph_right_copy.pop(symbol_special_sink_right_copy)
 
     # Merges two `symbol_graphs`, the left without its `SINK` and the right without its `SOURCE`.
     symbol_graph_output = symbol_graph_left_copy | symbol_graph_right_copy
 
-    # Extend the left `SOURCE` to the right `SOURCE`, `|` is not used because it discards the order.
-    symbol_graph_left_source.extend(symbol_graph_right_source)
-    symbol_graph_output[symbol_special_source] = symbol_graph_left_source
+    # Extend the left `SOURCE` to the right `SOURCE`, `|` is not used because it discards the order (important for testing).
+    symbol_graph_left_source_copy.extend(symbol_graph_right_source_copy)
+    symbol_graph_output[symbol_special_source] = symbol_graph_left_source_copy
 
-    # Extend the left `SINK` to the right `SINK`, `|` is not used because it discards the order.
-    symbol_graph_left_sink.extend(symbol_graph_right_sink)
-    symbol_graph_output[symbol_special_sink] = symbol_graph_left_sink
+    # Extend the left `SINK` to the right `SINK`, `|` is not used because it discards the order (important for testing).
+    symbol_graph_left_sink_copy.extend(symbol_graph_right_sink_copy)
+    symbol_graph_output[symbol_special_sink] = symbol_graph_left_sink_copy
 
     return symbol_graph_output
 
@@ -197,7 +219,7 @@ def build_symbol_graph(symbol_def: str) -> dict[Symbol, OrderedSet[Symbol]]:  # 
 
             if str_symbol in ("(", "[", "{"):
                 symbol_graph_base = construct_symbol_subgraph(partial)
-                # **************** What happens if `partial` is not cleared? ****************
+                # What happens if `partial` is not cleared?
 
                 # Let's have a look at the following example: (_1 `def_1` (_2 `def_2` 2_) `def_3` ) 1_)
 
@@ -245,7 +267,6 @@ def build_symbol_graph(symbol_def: str) -> dict[Symbol, OrderedSet[Symbol]]:  # 
                 # Example of (between stacks):
                 # (_1 (_2 `def_1` _2) | (_3 `def_3` _3)  1_)
                 # or (_1 (_2 `def_1` _2) | def_2  1_).
-
                 if not symbol_graph_partial_lhs:
                     symbol_graph_partial_lhs = construct_symbol_subgraph(partial)
 

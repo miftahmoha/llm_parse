@@ -380,3 +380,37 @@ def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
     )
 
     assert true_symbol_graph_output == generated_symbol_graph_output
+
+
+@pytest.fixture
+def def_without_or_with_special_delimiters():
+    return """ "(" expression {factor "-" Regex([0-9]*.[0-9]*)} ")" """
+
+
+def test_build_graph_def_with_or_with_special_delimiters(
+    def_without_or_with_special_delimiters: str,
+):
+    generated_symbol_graph_output = build_symbol_graph(
+        def_without_or_with_special_delimiters
+    )
+    draw_symbol_graph(generated_symbol_graph_output)
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph_output)
+
+    true_symbol_graph_output = defaultdict(
+        OrderedSet,
+        {
+            symbols["SOURCE"]: OrderedSet([symbols['"("|0']]),
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [symbols["factor|0"], symbols["EOS_TOKEN|0"]]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["[0-9]*.[0-9]*|0"]]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet(
+                [symbols["factor|0"], symbols['")"|0']]
+            ),
+            symbols["SINK"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+
+    assert true_symbol_graph_output == generated_symbol_graph_output

@@ -1,8 +1,9 @@
 from typing import TypeVar, Generic, Iterable, Iterator
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 
+from copy import deepcopy
+import uuid
 
 T = TypeVar("T")
 
@@ -46,6 +47,9 @@ class OrderedSet(Generic[T]):
     def __and__(self, other: "OrderedSet[T]") -> "OrderedSet[T]":
         return OrderedSet(self._dict.keys() & other._dict.keys())
 
+    def copy(self):
+        return deepcopy(self)
+
 
 class SymbolType(Enum):
     TERMINAL = 1
@@ -62,6 +66,7 @@ class SymbolGraphType(Enum):
 
 def generate_uuid():
     return uuid.uuid4()
+
 
 @dataclass
 class Symbol:
