@@ -37,7 +37,6 @@ class OrderedSet(Generic[T]):
 
     def __eq__(self, other) -> bool:
         if isinstance(other, OrderedSet):
-            # Have to figure out the difference between Iterator and Iterable.
             return list(self) == list(other)  # type: ignore
         return NotImplemented
 

@@ -416,6 +416,11 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
     assert true_symbol_graph_output == generated_symbol_graph_output
 
 
+test_build_graph_def_with_or_with_special_delimiters_none_any(
+    """ "(" expression {factor "-" Regex([0-9]*.[0-9]*)} ")" """
+)
+
+
 @pytest.fixture
 def def_with_out_or_with_special_delimiters_none_any():
     return """ "(" expression ({factor "-"} | Regex([0-9]*.[0-9]*)) ")" """
@@ -462,7 +467,6 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
     generated_symbol_graph_output = build_symbol_graph(
         def_with_in_and_out_or_with_special_delimiters_none_any
     )
-    draw_symbol_graph(generated_symbol_graph_output)
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph_output)
 
     true_symbol_graph_output = defaultdict(
@@ -483,11 +487,130 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
             symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['")"|0']]),
             symbols["[0-9]*.[0-9]*|0"]: OrderedSet(
-                [symbols["[0-9]*.[0-9]*|0"], symbols['")"|0']]
+                [symbols["[0-9]*.[0-9]*|0"], symbols['"+"|0'], symbols['")"|0']]
             ),
-            symbols['"+"|0']: OrderedSet([symbols['"+"|0'], symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet(
+                [symbols['"+"|0'], symbols["[0-9]*.[0-9]*|0"], symbols['")"|0']]
+            ),
             symbols["SINK"]: OrderedSet([symbols['")"|0']]),
         },
     )
 
     assert true_symbol_graph_output == generated_symbol_graph_output
+
+
+# [NOTE] Try sequences of delimiters, more than two ORs (W).
+@pytest.fixture
+def def_with_in_and_out_ext_or_with_special_delimiters_none_any():
+    return """ "(" expression {(factor "-") | {Regex([0-9]*.[0-9]*) factor | "+" expression}} ")" """
+
+
+def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any(
+    def_with_in_and_out_ext_or_with_special_delimiters_none_any: str,
+):
+    generated_symbol_graph_output = build_symbol_graph(
+        def_with_in_and_out_ext_or_with_special_delimiters_none_any
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph_output)
+
+    true_symbol_graph_output = defaultdict(
+        OrderedSet,
+        {
+            symbols["SOURCE"]: OrderedSet([symbols['"("|0']]),
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols['"+"|0'],
+                    symbols["EOS_TOKEN|1"],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            # symbols['"-"|0']: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            # symbols["factor|1"]: OrderedSet(
+            #     [symbols["[0-9]*.[0-9]*|0"], symbols['")"|0']]
+            # ),
+            symbols["factor|1"]: OrderedSet(
+                [
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            # symbols["expression|1"]: OrderedSet([symbols['"+"|0'], symbols['")"|0']]),
+            symbols["expression|1"]: OrderedSet(
+                [
+                    symbols['"+"|0'],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols["SINK"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+
+    assert true_symbol_graph_output == generated_symbol_graph_output
+
+
+# @pytest.fixture
+# def def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any():
+#     return """ "(" expression {{factor "-"} ("+" power) | {Regex([0-9]*.[0-9]*) factor | "+" expression}} ")" """
+
+
+# def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any(
+#     def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any: str,
+# ):
+#     generated_symbol_graph_output = build_symbol_graph(
+#         def_with_in_and_out_ext_or_seq_with_special_delimiters_none_any
+#     )
+#     draw_symbol_graph(generated_symbol_graph_output)
+#     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph_output)
+
+#     true_symbol_graph_output = defaultdict(
+#         OrderedSet,
+#         {
+#             symbols["SOURCE"]: OrderedSet([symbols['"("|0']]),
+#             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+#             symbols["expression|0"]: OrderedSet(
+#                 [
+#                     symbols["factor|0"],
+#                     symbols["[0-9]*.[0-9]*|0"],
+#                     symbols["EOS_TOKEN|0"],
+#                     symbols['"+"|0'],
+#                     symbols["EOS_TOKEN|1"],
+#                 ]
+#             ),
+#             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+#             symbols['"-"|0']: OrderedSet([symbols['"+"|0']]),
+#             symbols['"+"|0']: OrderedSet([symbols["power|0"]]),
+#             symbols["power|0"]: OrderedSet([symbols['")"|0']]),
+#             symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+#             symbols["factor|1"]: OrderedSet(
+#                 [symbols["[0-9]*.[0-9]*|0"], symbols['")"|0']]
+#             ),
+#             symbols['"+"|1']: OrderedSet([symbols["expression|1"]]),
+#             symbols["expression|1"]: OrderedSet([symbols['"+"|1'], symbols['")"|0']]),
+#             symbols["SINK"]: OrderedSet([symbols['")"|0']]),
+#         },
+#     )
+
+#     assert true_symbol_graph_output == generated_symbol_graph_output
+
+
+# test_build_graph_def_with_in_and_out_ext_1_or_with_special_delimiters_none_any(
+#     """ "(" expression {{factor "-"} ("+" power) | {Regex([0-9]*.[0-9]*) factor | "+" expression}} ")" """
+# )

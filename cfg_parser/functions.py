@@ -1,7 +1,7 @@
 from collections import defaultdict, deque
 from copy import deepcopy
-
 from typing import Deque
+
 from cfg_parser.base import Symbol, SymbolType, OrderedSet
 from cfg_parser.exceptions import SymbolNotFound
 
@@ -30,6 +30,9 @@ def find_symbol_antecedent(
 ):
     for symbol_parent, symbol_children in symbol_graph.items():
         if search_symbol in symbol_children:
+            # "SOURCE" and "SINK" are special symbols that are not nodes of the `symbol_graph` but properties of it.
+            if symbol_parent.content in ["SOURCE", "SINK"]:
+                continue
             return symbol_parent
 
     raise SymbolNotFound(f"Symbol {search_symbol.content} was not found.")
@@ -37,9 +40,9 @@ def find_symbol_antecedent(
 
 def get_source_and_sink_special_symbols(
     symbol_graph: dict[Symbol, OrderedSet[Symbol]]
-    ) -> list[Symbol]: 
+) -> list[Symbol]:
     special_symbols = []
-    
+
     for symbol in symbol_graph:
         if symbol.content == "SOURCE" or symbol.content == "SINK":
             special_symbols = special_symbols + [symbol]
@@ -49,11 +52,18 @@ def get_source_and_sink_special_symbols(
 
     return special_symbols
 
-def get_source_and_sink_symbols_content(symbol_graph: dict[Symbol, OrderedSet[Symbol]]) -> tuple[OrderedSet, OrderedSet]:
-        special_symbol_source, special_symbol_sink = get_source_and_sink_special_symbols(symbol_graph)
-        symbol_graph_source, symbol_graph_sink = symbol_graph[special_symbol_source], symbol_graph[special_symbol_sink]
-        return symbol_graph_source, symbol_graph_sink
 
+def get_source_and_sink_symbols_content(
+    symbol_graph: dict[Symbol, OrderedSet[Symbol]]
+) -> tuple[OrderedSet, OrderedSet]:
+    special_symbol_source, special_symbol_sink = get_source_and_sink_special_symbols(
+        symbol_graph
+    )
+    symbol_graph_source, symbol_graph_sink = (
+        symbol_graph[special_symbol_source],
+        symbol_graph[special_symbol_sink],
+    )
+    return symbol_graph_source, symbol_graph_sink
 
 
 def check_for_errors(symbol_def: str):
@@ -115,7 +125,9 @@ def get_symbols_from_generated_symbol_graph(
     symbols: dict[str, Symbol] = {}
 
     # Adding the SOURCE and the SINK
-    symbols["SOURCE"], symbols["SINK"] = get_source_and_sink_special_symbols(generated_symbol_graph)
+    symbols["SOURCE"], symbols["SINK"] = get_source_and_sink_special_symbols(
+        generated_symbol_graph
+    )
 
     start = generated_symbol_graph[symbols["SOURCE"]]
     visited = dfs(deepcopy(generated_symbol_graph), start)
