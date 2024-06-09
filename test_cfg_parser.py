@@ -15,6 +15,8 @@ from cfg_parser.functions import (
 )
 from cfg_parser.draw import draw_symbol_graph
 
+# ----------------------------- construct_symbol_subgraph -----------------------------
+
 
 @pytest.fixture
 def simple_subdef_without_or():
@@ -130,6 +132,9 @@ def test_construct_symbol_subgraph_subdef_with_regex_and_or(
     assert true_symbol_graph == generated_symbol_graph
 
 
+# ----------------------------- connect_symbol_graph -----------------------------
+
+
 def test_connect_symbol_graph_simple_subdefs(
     simple_subdef_without_or: str, simple_subdef_with_regex: str
 ):
@@ -239,6 +244,11 @@ def def_without_or_without_special_delimiters():
     return """ "(" expression (factor "-" Regex([0-9]*.[0-9]*)) ")" """
 
 
+# ----------------------------- build_symbol_graph -----------------------------
+
+# || ----------------------------- SymbolGraphType.STANDARD ----------------------------- ||
+
+
 def test_build_graph_def_without_or_without_special_delimiters(
     def_without_or_without_special_delimiters: str,
 ):
@@ -303,9 +313,46 @@ def test_build_graph_def_without_or_seq_without_special_delimiters(
     assert true_symbol_graph == generated_symbol_graph
 
 
-# test_build_graph_def_without_or_seq_without_special_delimiters(
-#     """ "(" expression (factor "-" Regex([0-9]*.[0-9]*) (power "+") (factor "*") power) ")" """
-# )
+@pytest.fixture
+def def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters():
+    return """ "(" expression (factor "-" (power "+") (factor "*") ("/" number) power ("/" Regex([0-9]*.[0-9]*)) (factor "+") expression) ")" """
+
+
+def test_build_graph_def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters(
+    def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_without_or_seq_disrupt_in_between_and_end_without_special_delimiters
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet([symbols["factor|0"]]),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols['"+"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['"*"|0']]),
+            symbols['"*"|0']: OrderedSet([symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["number|0"]]),
+            symbols["number|0"]: OrderedSet([symbols["power|1"]]),
+            symbols["power|1"]: OrderedSet([symbols['"/"|1']]),
+            symbols['"/"|1']: OrderedSet([symbols["[0-9]*.[0-9]*|0"]]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
 
 
 @pytest.fixture
@@ -446,6 +493,9 @@ def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
     assert true_symbol_graph == generated_symbol_graph
 
 
+# || ----------------------------- SymbolGraphType.NONE_ANY ----------------------------- ||
+
+
 @pytest.fixture
 def def_without_or_with_special_delimiters_none_any():
     return """ "(" expression {factor "-" Regex([0-9]*.[0-9]*)} ")" """
@@ -476,6 +526,9 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
     finals = OrderedSet([symbols['")"|0']])
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
     assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+# || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY ----------------------------- ||
 
 
 @pytest.fixture
@@ -558,7 +611,6 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
     assert true_symbol_graph.nodes == generated_symbol_graph.nodes
 
 
-# [NOTE] Try sequences of delimiters, more than two ORs (W).
 @pytest.fixture
 def def_with_in_and_out_ext_or_with_special_delimiters_none_any():
     return """ "(" expression {(factor "-") | {Regex([0-9]*.[0-9]*) factor | "+" expression}} ")" """
@@ -753,3 +805,490 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
     assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any():
+    return """ "(" expression {{factor "-"} ("/" factor) ("+" power) expression | {Regex([0-9]*.[0-9]*) factor | "+" expression}} ")" """
+
+
+# [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
+# That is because the third `expression` is higher in the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_any
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet(
+                [
+                    symbols['"+"|0'],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any():
+    return """ "(" expression {{factor "-"} ("/" factor) {"+" power} expression (Regex([0-9]*.[0-9]*) "*") | {Regex([0-9]*.[0-9]*) factor | "+" expression}} ")" """
+
+
+# [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
+# That is because the third `expression` is higher in the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1'], symbols["EOS_TOKEN|1"]]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols['"+"|1'], symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet([symbols["[0-9]*.[0-9]*|1"]]),
+            symbols["[0-9]*.[0-9]*|1"]: OrderedSet([symbols['"*"|0']]),
+            symbols['"*"|0']: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet(
+                [
+                    symbols['"+"|0'],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols["factor|0"],
+                    symbols['")"|0'],
+                ]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+# || ----------------------------- SymbolGraphType.NONE_ONE ----------------------------- ||
+@pytest.fixture
+def def_without_or_with_special_delimiters_none_once():
+    return """ "(" expression [factor "-" Regex([0-9]*.[0-9]*)] ")" """
+
+
+def test_build_graph_def_without_or_with_special_delimiters_none_once(
+    def_without_or_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_without_or_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [symbols["factor|0"], symbols["EOS_TOKEN|0"]]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["[0-9]*.[0-9]*|0"]]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+# || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ONE ----------------------------- ||
+
+
+@pytest.fixture
+def def_with_out_or_with_special_delimiters_none_once():
+    return """ "(" expression ([factor "-"] | Regex([0-9]*.[0-9]*)) ")" """
+
+
+def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
+    def_with_out_or_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_out_or_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_or_with_special_delimiters_none_once():
+    return """ "(" expression ([factor "-"] | [Regex([0-9]*.[0-9]*) | "+"]) ")" """
+
+
+def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
+    def_with_in_and_out_or_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_or_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_with_special_delimiters_none_once():
+    return """ "(" expression [(factor "-") | [Regex([0-9]*.[0-9]*) factor | "+" expression]] ")" """
+
+
+def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_once(
+    def_with_in_and_out_ext_or_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph == generated_symbol_graph
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once():
+    return """ "(" expression [(factor "-") ("+" power) | [Regex([0-9]*.[0-9]*) factor | "+" expression]] ")" """
+
+
+# [NOTE] DFS visits the second `+` symbol from the subdefinition ("+" expression`) first. That is because
+# the second symbol `+` is directly connected to the subgraph ("(" expression), while the first is deeper into
+# the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once(
+    def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_once():
+    return """ "(" expression [[factor "-"] ("+" power) | [Regex([0-9]*.[0-9]*) factor | "+" expression]] ")" """
+
+
+# [NOTE] DFS visits the second `+` symbol from the subdefinition ("+" expression`) first. That is because
+# the second symbol `+` is directly connected to the subgraph ("(" expression), while the first is deeper into
+# the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_once(
+    def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once():
+    return """ "(" expression [[factor "-"] ("/" factor) ("+" power) expression | [Regex([0-9]*.[0-9]*) factor | "+" expression]] ")" """
+
+
+# [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
+# That is because the third `expression` is higher in the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1']]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once():
+    return """ "(" expression [[factor "-"] ("/" factor) ["+" power] expression (Regex([0-9]*.[0-9]*) "*") | [Regex([0-9]*.[0-9]*) factor | "+" expression]] ")" """
+
+
+# [NOTE] DFS visits the third `expression` symbol from the subdefinition ("+" expression`) second and not third.
+# That is because the third `expression` is higher in the tree.
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1'], symbols["EOS_TOKEN|1"]]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet([symbols["[0-9]*.[0-9]*|1"]]),
+            symbols["[0-9]*.[0-9]*|1"]: OrderedSet([symbols['"*"|0']]),
+            symbols['"*"|0']: OrderedSet([symbols['")"|0']]),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet([symbols['")"|0']]),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet([symbols['")"|0']]),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+
+# || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.NONE_ONE ----------------------------- ||
