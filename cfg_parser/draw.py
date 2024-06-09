@@ -1,30 +1,49 @@
-# from cfg_parser import connect_symbol_graph, construct_symbol_subgraph
-from cfg_parser.base import OrderedSet, Symbol
-from cfg_parser.functions import get_symbols_from_generated_symbol_graph
-
 import networkx as nx
 import matplotlib.pyplot as plt
 
+from cfg_parser.base import OrderedSet, Symbol, SymbolGraph
+from cfg_parser.functions import get_symbols_from_generated_symbol_graph
+from cfg_parser.base import SymbolType
 
-def draw_symbol_graph(symbol_graph: dict[Symbol, OrderedSet[Symbol]]):
+
+def draw_symbol_graph(symbol_graph: SymbolGraph):
     G = nx.DiGraph()
-    symbols = get_symbols_from_generated_symbol_graph(symbol_graph)
+
+    symbol_graph_copy = symbol_graph.copy()
+
+    symbols = get_symbols_from_generated_symbol_graph(symbol_graph_copy)
+
+    # Adding initials and finals as `Symbols` for visual purposes.
+    symbol_special_initials, symbol_special_finals = Symbol(
+        "INITIALS", SymbolType.SPECIAL
+    ), Symbol("FINALS", SymbolType.SPECIAL)
+    symbols["INITIALS"], symbols["FINALS"] = (
+        symbol_special_initials,
+        symbol_special_finals,
+    )
+
+    # Adding the connections.
+    (
+        symbol_graph_copy.nodes[symbol_special_initials],
+        symbol_graph_copy.nodes[symbol_special_finals],
+    ) = (symbol_graph_copy.initials, symbol_graph_copy.finals)
+
     labels = {}
 
     for symbol in symbols.values():
         G.add_node(symbol)
         labels[symbol] = symbol.content
 
-    for symbol, connections in symbol_graph.items():
+    for symbol, connections in symbol_graph_copy.nodes.items():
         for connection in connections:
             G.add_edge(symbol, connection)
 
-    # Set the figure size
+    # Setting the figure size.
     plt.figure(figsize=(5, 5))
 
     pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
 
-    # Use graphviz to layout the nodes
+    # Using graphviz to layout the nodes.
     nx.draw(
         G,
         pos,

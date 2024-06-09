@@ -1,8 +1,9 @@
 from typing import TypeVar, Generic, Iterable, Iterator
 from dataclasses import dataclass, field
+from collections import defaultdict
 from enum import Enum
-
 from copy import deepcopy
+
 import uuid
 
 T = TypeVar("T")
@@ -19,9 +20,13 @@ class OrderedSet(Generic[T]):
         if item in self._dict:
             self._dict.pop(item)
 
-    def extend(self, other) -> None:
+    def extend(self, other) -> "OrderedSet":
         for symbol in other:
             self.add(symbol)
+        return self
+
+    def __bool__(self) -> bool:
+        return bool(self._dict)
 
     def __contains__(self, item: T) -> bool:
         return item in self._dict
@@ -86,3 +91,33 @@ class Symbol:
             and (self.s_type == other.s_type)
             and (self.s_id == other.s_id)
         )
+
+
+def nodes_default():
+    return defaultdict(OrderedSet)
+
+
+def property_default():
+    return OrderedSet([])
+
+
+@dataclass
+class SymbolGraph:
+    nodes: dict[Symbol, OrderedSet[Symbol]] = field(default_factory=nodes_default)
+    initials: OrderedSet[Symbol] = field(default_factory=property_default)
+    finals: OrderedSet[Symbol] = field(default_factory=property_default)
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, SymbolGraph):
+            return (
+                (self.initials == other.initials)
+                and (self.nodes == other.nodes)
+                and (self.finals == other.finals)
+            )
+        return NotImplemented
+
+    def __bool__(self) -> bool:
+        return bool(self.initials) and bool(self.nodes) and bool(self.finals)
+
+    def copy(self):
+        return deepcopy(self)

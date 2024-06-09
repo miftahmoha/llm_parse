@@ -2,7 +2,7 @@ from collections import defaultdict, deque
 from copy import deepcopy
 from typing import Deque
 
-from cfg_parser.base import Symbol, SymbolType, OrderedSet
+from cfg_parser.base import Symbol, SymbolType, SymbolGraph, OrderedSet
 from cfg_parser.exceptions import SymbolNotFound
 
 
@@ -25,45 +25,67 @@ def convert_str_to_symbol(symbol_str: str) -> Symbol:
     return node
 
 
-def find_symbol_antecedent(
-    symbol_graph: dict[Symbol, OrderedSet[Symbol]], search_symbol: Symbol
-):
-    for symbol_parent, symbol_children in symbol_graph.items():
+def get_symbol_antecedent(
+    symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]], search_symbol: Symbol
+) -> Symbol:
+    for symbol_parent, symbol_children in symbol_graph_nodes.items():
         if search_symbol in symbol_children:
-            # "SOURCE" and "SINK" are special symbols that are not nodes of the `symbol_graph` but properties of it.
-            if symbol_parent.content in ["SOURCE", "SINK"]:
-                continue
             return symbol_parent
 
     raise SymbolNotFound(f"Symbol {search_symbol.content} was not found.")
 
 
-def get_source_and_sink_special_symbols(
-    symbol_graph: dict[Symbol, OrderedSet[Symbol]]
+def get_symbol_antecedents(
+    symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]], search_symbol: Symbol
+) -> Symbol:
+    symbol_antecedents = []
+    for symbol_parent, symbol_children in symbol_graph_nodes.items():
+        if search_symbol in symbol_children:
+            symbol_antecedents.append(symbol_parent)
+
+    if len(symbol_antecedents) == 0:
+        raise SymbolNotFound(
+            f"No Symbol antecedent for {search_symbol.content} was found."
+        )
+
+    return symbol_antecedents
+
+
+def is_contain_eos_token(symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]]) -> bool:
+    for symbol in symbol_graph_nodes:
+        if symbol.content == "EOS_TOKEN" and symbol.s_type == SymbolType.SPECIAL:
+            return True
+    return False
+
+
+def discard_single_nodes(
+    symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]]
+) -> SymbolGraph:
+    single_node_symbols = []
+    symbol_graph_nodes_copy = symbol_graph_nodes.copy()
+
+    for symbol_key in symbol_graph_nodes_copy.keys():
+        if not symbol_graph_nodes_copy[symbol_key]:
+            single_node_symbols.append(symbol_key)
+
+    for single_node_symbol in single_node_symbols:
+        del symbol_graph_nodes_copy[single_node_symbol]
+
+    return symbol_graph_nodes_copy
+
+
+def get_symbols_with_content(
+    symbol_graph: OrderedSet[Symbol], content: str
 ) -> list[Symbol]:
-    special_symbols = []
-
+    symbols = []
     for symbol in symbol_graph:
-        if symbol.content == "SOURCE" or symbol.content == "SINK":
-            special_symbols = special_symbols + [symbol]
+        if symbol.content == content:
+            symbols.append(symbol)
 
-    if len(special_symbols) in [0, 1]:
-        raise SymbolNotFound(f"Special symbol `SOURCE` or `SINK` was not found.")
+    if len(symbols) == 0:
+        raise SymbolNotFound(f"No Symbol matching {content} was found.")
 
-    return special_symbols
-
-
-def get_source_and_sink_symbols_content(
-    symbol_graph: dict[Symbol, OrderedSet[Symbol]]
-) -> tuple[OrderedSet, OrderedSet]:
-    special_symbol_source, special_symbol_sink = get_source_and_sink_special_symbols(
-        symbol_graph
-    )
-    symbol_graph_source, symbol_graph_sink = (
-        symbol_graph[special_symbol_source],
-        symbol_graph[special_symbol_sink],
-    )
-    return symbol_graph_source, symbol_graph_sink
+    return symbols
 
 
 def check_for_errors(symbol_def: str):
@@ -120,19 +142,13 @@ def convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
 
 
 def get_symbols_from_generated_symbol_graph(
-    generated_symbol_graph: dict[Symbol, OrderedSet[Symbol]]
+    symbol_graph: SymbolGraph,
 ) -> dict[str, Symbol]:
     symbols: dict[str, Symbol] = {}
 
-    # Adding the SOURCE and the SINK
-    symbols["SOURCE"], symbols["SINK"] = get_source_and_sink_special_symbols(
-        generated_symbol_graph
-    )
+    start = symbol_graph.initials
+    visited = new_dfs(symbol_graph.copy(), start)
 
-    start = generated_symbol_graph[symbols["SOURCE"]]
-    visited = dfs(deepcopy(generated_symbol_graph), start)
-
-    # The reason '"-"' is swapped is because the second one is in the keys.
     # The default int is OrderedSet to 0.
     order: dict[str, int] = defaultdict(int)
     for symbol in visited:
@@ -142,10 +158,7 @@ def get_symbols_from_generated_symbol_graph(
     return symbols
 
 
-# A `queue` instad of a `stack`, just a convenience for testing.
-def dfs(
-    symbol_graph: dict[Symbol, OrderedSet[Symbol]], start: OrderedSet[Symbol]
-) -> list[Symbol]:
+def new_dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
     visited = []
 
     queue = deque()  # type: ignore
@@ -155,6 +168,6 @@ def dfs(
         vertex = queue.popleft()
         if vertex not in visited:
             visited.append(vertex)
-            queue.extend(symbol_graph[vertex])
+            queue.extend(symbol_graph.nodes[vertex])
 
     return visited
