@@ -160,11 +160,13 @@ def union_symbol_graph(
     )
 
 
-# Delimiters such as `NONE_ANY "{XXXXX}"`, `NONE_ONE [XXXXX]` can enduce changes in the structure that the connection and the union can't express.
-
-
-# For example when `NONE_ANY` delimiters nest a composite definition such as (factor "-") | {Regex([0-9]*.[0-9]*) factor | "+" expression},
-# there'll be new connections, one of them is '"-"' being connected to Regex([0-9]*.[0-9]*) and '"+"'. `cast_symbol_graph` will add those remaining connections.
+# [TODO] Needs more consideration~
+# Delimiters such as `NONE_ANY`, `NONE_ONE` can enduce changes in the structure that
+# the connection and the union can't express.
+# For example when `NONE_ANY` delimiters nest a composite definition such as
+# (factor "-") | {Regex([0-9]*.[0-9]*) factor | "+" expression},
+# there'll be new connections, one of them is '"-"' being connected to Regex([0-9]*.[0-9]*) and '"+"'.
+# `cast_symbol_graph` will add those remaining connections.
 def cast_symbol_graph(
     symbol_graph: SymbolGraph,
     symbol_graph_cast_type: SymbolGraphType,
@@ -257,10 +259,28 @@ def cast_symbol_graph(
         return symbol_graph_copy
 
 
+# [TODO] Needs better name for `symbol_graph_partial_lhs` and `symbol_graph_partial_rhs`~
+# Maybe `symbol_graph_partial_accumul` and `symbol_graph_partial_last`
+# [TODO] Extend the logic to `NONE_ANY` and `NONE_ONCE`
 def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
     queue_symbol_def = convert_str_def_to_str_queue(symbol_def)
     LAST_STACK_GRAPH_TYPE: SymbolGraphType = SymbolGraphType.STANDARD
 
+    # We build graphs from the left, (_1 `def_1` (_2 `def_2` 2_) `def_3` (_3 def_4 3_) 1_),
+    # Each time, we encounter an opening delimiter `(, [, {`, we build what we accumulated before it.
+    # In the example above, there nothing before, thus we're going to build an empty subgraph,
+    # let's call it `subgraph_{0}`. `_{}` refers to the stack level.
+    # `subgraph_{0}` is stored in a variable called `symbol_graph_bottom_level_{0}`, as you might have guessed,
+    # it refers to the bottom stack layer.
+    # Because we can look at it as follows:
+    # (_0 [EMPTY_GRAPH] --> `symbol_graph_bottom_level_{0}` (_1 `def_1` (_2 `def_2` 2_) `def_3` ) 1_) 0_)
+    # When we reach a new stack layer, in the example `(_2`, we'll recurse through the next stack layer `(_2`
+    # and return the result (when we encouter a closing delimiter `), ], }`) to a variable called `symbol_graph_upper_level_{1}`.
+    # Then we build `def_2` which'll be returned to symbol_graph_upper_level_{1}`.
+    # Finally, It'll be connected to `def_1` and stored into a variable called `symbol_graph_partial_lhs_{1}`.`
+    # We repeat the same process within a single stack, we successively build bottom and upper layers,
+    # ``def_1` (_2 `def_2` 2_)` and ``def_3` (_3 def_4 3_)` while acummulating the result
+    # in `symbol_graph_partial_lhs_{1}` .
     def recurse_build(queue_symbol_def: Deque[str]):
         partial: list[str] = []
         symbol_graph_partial_lhs: SymbolGraph = SymbolGraph()
@@ -300,33 +320,30 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
 
                 symbol_graph_upper_level = recurse_build(queue_symbol_def)
 
-                # Always empty inside a stack.
-                if not symbol_graph_partial_lhs:
-                    symbol_graph_partial_lhs = connect_symbol_graph(
+                # Accumulates successive bottom-upper stack level symbol graph builds.
+                if symbol_graph_partial_lhs:
+                    symbol_graph_partial_lhs_next = connect_symbol_graph(
                         symbol_graph_bottom_level, symbol_graph_upper_level
+                    )
+                    symbol_graph_partial_lhs = connect_symbol_graph(
+                        symbol_graph_partial_lhs, symbol_graph_partial_lhs_next
                     )
                 else:
-                    symbol_graph_partial_lhs_prev = symbol_graph_partial_lhs
                     symbol_graph_partial_lhs = connect_symbol_graph(
                         symbol_graph_bottom_level, symbol_graph_upper_level
-                    )
-                    symbol_graph_partial_lhs = connect_symbol_graph(
-                        symbol_graph_partial_lhs_prev, symbol_graph_bottom_level
                     )
 
                 # Avoids leaving the the `lower` level stack after terminating a `higher` level stack.
                 # If we do leave, `symbol_graph_partial_rhs` will not be constructed if it exists!
                 # If it doesn't exist, then we return the `symbol_graph_partial_lhs`.
                 if bool(queue_symbol_def):
-
                     # Dealing with sequences of delimiters (_1 `def_1` (_2 `def_2` 2_) {_3 `def_3` 3_} (_4 `def_4` 4_) `def_5` 1_).
-                    # Doesn't work for more than two sequences.
-                    if queue_symbol_def[0] in ("(", "[", "{"):
-                        queue_symbol_def.popleft()
-                        symbol_graph_next_delim = recurse_build(queue_symbol_def)
-                        symbol_graph_partial_lhs = connect_symbol_graph(
-                            symbol_graph_partial_lhs, symbol_graph_next_delim
-                        )
+                    # while queue_symbol_def[0] in ("(", "[", "{"):
+                    #     queue_symbol_def.popleft()
+                    #     symbol_graph_next_seq = recurse_build(queue_symbol_def)
+                    #     symbol_graph_partial_lhs = connect_symbol_graph(
+                    #         symbol_graph_partial_lhs, symbol_graph_next_seq
+                    #     )
                     continue
 
                 # We need to return at the last delimiter to not pop from an empty queue,
