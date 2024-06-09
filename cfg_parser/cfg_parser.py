@@ -247,8 +247,8 @@ def cast_symbol_graph(
 
         # Add `EOS_TOKEN` as `initials`
         symbol_special_eos_initial = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
-        symbol_graph.initials.add(symbol_special_eos_initial)
-        symbol_graph.nodes[symbol_special_eos_initial]
+        symbol_graph_copy.initials.add(symbol_special_eos_initial)
+        symbol_graph_copy.nodes[symbol_special_eos_initial]
         return symbol_graph_copy
 
     else:
@@ -337,13 +337,6 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
                 # If we do leave, `symbol_graph_partial_rhs` will not be constructed if it exists!
                 # If it doesn't exist, then we return the `symbol_graph_partial_lhs`.
                 if bool(queue_symbol_def):
-                    # Dealing with sequences of delimiters (_1 `def_1` (_2 `def_2` 2_) {_3 `def_3` 3_} (_4 `def_4` 4_) `def_5` 1_).
-                    # while queue_symbol_def[0] in ("(", "[", "{"):
-                    #     queue_symbol_def.popleft()
-                    #     symbol_graph_next_seq = recurse_build(queue_symbol_def)
-                    #     symbol_graph_partial_lhs = connect_symbol_graph(
-                    #         symbol_graph_partial_lhs, symbol_graph_next_seq
-                    #     )
                     continue
 
                 # We need to return at the last delimiter to not pop from an empty queue,
@@ -399,6 +392,14 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
                 if not symbol_graph_partial_lhs:
                     symbol_graph_partial_lhs = construct_symbol_subgraph(
                         partial, LAST_STACK_GRAPH_TYPE
+                    )
+                else:
+                    symbol_graph_partial_lhs_prev = symbol_graph_partial_lhs
+                    symbol_graph_partial_lhs = construct_symbol_subgraph(
+                        partial, LAST_STACK_GRAPH_TYPE
+                    )
+                    symbol_graph_partial_lhs = connect_symbol_graph(
+                        symbol_graph_partial_lhs_prev, symbol_graph_partial_lhs
                     )
 
                 symbol_graph_partial_rhs = recurse_build(queue_symbol_def)
