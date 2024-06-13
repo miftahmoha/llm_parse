@@ -1,6 +1,4 @@
-from collections import defaultdict, deque
-from copy import deepcopy
-from networkx import draw
+from collections import defaultdict
 
 import pytest
 
@@ -13,7 +11,7 @@ from cfg_parser.base import OrderedSet, Symbol, SymbolGraph
 from cfg_parser.functions import (
     get_symbols_from_generated_symbol_graph,
 )
-from cfg_parser.draw import draw_symbol_graph
+
 
 # ----------------------------- construct_symbol_subgraph -----------------------------
 
@@ -50,7 +48,8 @@ def simple_subdef_with_or():
 
 
 def test_construct_symbol_subgraph_simple_subdef_with_or(simple_subdef_with_or: str):
-    generated_symbol_graph = construct_symbol_subgraph(simple_subdef_with_or.split())
+    # generated_symbol_graph = construct_symbol_subgraph(simple_subdef_with_or.split())
+    generated_symbol_graph = build_symbol_graph(simple_subdef_with_or)
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["factor|0"], symbols["factor|1"]])
@@ -101,7 +100,7 @@ def subdef_with_regex_and_or():
 def test_construct_symbol_subgraph_subdef_with_regex_and_or(
     subdef_with_regex_and_or: str,
 ):
-    generated_symbol_graph = construct_symbol_subgraph(subdef_with_regex_and_or.split())
+    generated_symbol_graph = build_symbol_graph(subdef_with_regex_and_or)
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet(
@@ -114,6 +113,7 @@ def test_construct_symbol_subgraph_subdef_with_regex_and_or(
     nodes = defaultdict(
         OrderedSet,
         {
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([]),
             symbols['"-"|0']: OrderedSet([symbols["factor|0"]]),
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet([symbols['")"|0']]),
@@ -246,6 +246,7 @@ def def_without_or_without_special_delimiters():
 
 # ----------------------------- build_symbol_graph -----------------------------
 
+
 # || ----------------------------- SymbolGraphType.STANDARD ----------------------------- ||
 
 
@@ -352,7 +353,7 @@ def test_build_graph_def_without_or_seq_disrupt_in_between_and_end_without_speci
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -457,6 +458,11 @@ def test_build_graph_def_with_in_and_out_or_without_special_delimiters(
     assert true_symbol_graph == generated_symbol_graph
 
 
+# test_build_graph_def_with_in_and_out_or_without_special_delimiters(
+#     """ "(" expression ((factor "-") | (Regex([0-9]*.[0-9]*) | "+")) ")" """
+# )
+
+
 @pytest.fixture
 def def_with_in_and_out_ext_or_without_special_delimiters():
     return """ "(" expression ((factor "-") | (Regex([0-9]*.[0-9]*) factor | "+" expression)) ")" """
@@ -524,8 +530,10 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
         },
     )
     finals = OrderedSet([symbols['")"|0']])
+
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+
+    assert true_symbol_graph == generated_symbol_graph
 
 
 # || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY ----------------------------- ||
@@ -561,11 +569,12 @@ def test_build_graph_def_with_out_or_with_special_delimiters(
             symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols['")"|0']]),
         },
     )
+
     finals = OrderedSet([symbols['")"|0']])
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -600,7 +609,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
                 [symbols["[0-9]*.[0-9]*|0"], symbols['"+"|0'], symbols['")"|0']]
             ),
             symbols['"+"|0']: OrderedSet(
-                [symbols['"+"|0'], symbols["[0-9]*.[0-9]*|0"], symbols['")"|0']]
+                [symbols["[0-9]*.[0-9]*|0"], symbols['"+"|0'], symbols['")"|0']]
             ),
         },
     )
@@ -608,7 +617,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -633,8 +642,8 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any
                 [
                     symbols["factor|0"],
                     symbols["[0-9]*.[0-9]*|0"],
-                    symbols["EOS_TOKEN|0"],
                     symbols['"+"|0'],
+                    symbols["EOS_TOKEN|0"],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -658,8 +667,8 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet(
                 [
-                    symbols['"+"|0'],
                     symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
                     symbols["factor|0"],
                     symbols['")"|0'],
                 ]
@@ -698,8 +707,8 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
                 [
                     symbols["factor|0"],
                     symbols["[0-9]*.[0-9]*|0"],
-                    symbols["EOS_TOKEN|0"],
                     symbols['"+"|0'],
+                    symbols["EOS_TOKEN|0"],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -725,8 +734,8 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet(
                 [
-                    symbols['"+"|0'],
                     symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
                     symbols["factor|0"],
                     symbols['")"|0'],
                 ]
@@ -737,7 +746,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -792,8 +801,8 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet(
                 [
-                    symbols['"+"|0'],
                     symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
                     symbols["factor|0"],
                     symbols['")"|0'],
                 ]
@@ -804,7 +813,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -861,8 +870,8 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet(
                 [
-                    symbols['"+"|0'],
                     symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
                     symbols["factor|0"],
                     symbols['")"|0'],
                 ]
@@ -873,7 +882,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -932,8 +941,8 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
             symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
             symbols["expression|1"]: OrderedSet(
                 [
-                    symbols['"+"|0'],
                     symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
                     symbols["factor|0"],
                     symbols['")"|0'],
                 ]
@@ -944,10 +953,12 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 # || ----------------------------- SymbolGraphType.NONE_ONE ----------------------------- ||
+
+
 @pytest.fixture
 def def_without_or_with_special_delimiters_none_once():
     return """ "(" expression [factor "-" Regex([0-9]*.[0-9]*)] ")" """
@@ -978,7 +989,7 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 # || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ONE ----------------------------- ||
@@ -1018,7 +1029,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -1057,7 +1068,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -1082,8 +1093,8 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_onc
                 [
                     symbols["factor|0"],
                     symbols["[0-9]*.[0-9]*|0"],
-                    symbols["EOS_TOKEN|0"],
                     symbols['"+"|0'],
+                    symbols["EOS_TOKEN|0"],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -1126,8 +1137,8 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
                 [
                     symbols["factor|0"],
                     symbols["[0-9]*.[0-9]*|0"],
-                    symbols["EOS_TOKEN|0"],
                     symbols['"+"|0'],
+                    symbols["EOS_TOKEN|0"],
                 ]
             ),
             symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
@@ -1144,7 +1155,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -1190,7 +1201,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 @pytest.fixture
@@ -1238,7 +1249,12 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
+
+
+# test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_special_delimiters_none_once(
+#     """ "(" expression [[factor "-"] ("/" factor) ("+" power) expression | [Regex([0-9]*.[0-9]*) factor | "+" expression]] ")" """
+# )
 
 
 @pytest.fixture
@@ -1288,7 +1304,76 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
 
     true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
 
-    assert true_symbol_graph.nodes == generated_symbol_graph.nodes
+    assert true_symbol_graph == generated_symbol_graph
 
 
 # || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.NONE_ONE ----------------------------- ||
+
+
+@pytest.fixture
+def def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once():
+    return """ "(" expression {{factor "-"} ("/" factor) ["+" power] expression (Regex([0-9]*.[0-9]*) "*") | [Regex([0-9]*.[0-9]*) factor | "+" expression]} ")" """
+
+
+def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once(
+    def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once: str,
+):
+    generated_symbol_graph = build_symbol_graph(
+        def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and_end_with_special_delimiters_none_any_once
+    )
+    symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
+
+    initials = OrderedSet([symbols['"("|0']])
+    nodes = defaultdict(
+        OrderedSet,
+        {
+            symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
+            symbols["expression|0"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["EOS_TOKEN|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                ]
+            ),
+            symbols["factor|0"]: OrderedSet([symbols['"-"|0']]),
+            symbols['"-"|0']: OrderedSet([symbols["factor|0"], symbols['"/"|0']]),
+            symbols['"/"|0']: OrderedSet([symbols["factor|2"]]),
+            symbols["factor|2"]: OrderedSet([symbols['"+"|1'], symbols["EOS_TOKEN|1"]]),
+            symbols['"+"|1']: OrderedSet([symbols["power|0"]]),
+            symbols["power|0"]: OrderedSet([symbols["expression|2"]]),
+            symbols["expression|2"]: OrderedSet([symbols["[0-9]*.[0-9]*|1"]]),
+            symbols["[0-9]*.[0-9]*|1"]: OrderedSet([symbols['"*"|0']]),
+            symbols['"*"|0']: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols["[0-9]*.[0-9]*|0"]: OrderedSet([symbols["factor|1"]]),
+            symbols["factor|1"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+            symbols['"+"|0']: OrderedSet([symbols["expression|1"]]),
+            symbols["expression|1"]: OrderedSet(
+                [
+                    symbols["factor|0"],
+                    symbols["[0-9]*.[0-9]*|0"],
+                    symbols['"+"|0'],
+                    symbols['")"|0'],
+                ]
+            ),
+        },
+    )
+    finals = OrderedSet([symbols['")"|0']])
+
+    true_symbol_graph = SymbolGraph(initials=initials, nodes=nodes, finals=finals)
+
+    assert true_symbol_graph == generated_symbol_graph
