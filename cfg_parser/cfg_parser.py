@@ -5,13 +5,11 @@ from cfg_parser.base import OrderedSet, Symbol, SymbolType, SymbolGraph, SymbolG
 from cfg_parser.functions import (
     convert_str_to_symbol,
     convert_str_def_to_str_queue,
-    get_symbol_antecedent,
     get_symbol_antecedents,
     get_symbols_with_content,
     discard_single_nodes,
     is_contain_eos_token,
 )
-from cfg_parser.draw import draw_symbol_graph
 
 
 def construct_symbol_subgraph(
@@ -19,12 +17,16 @@ def construct_symbol_subgraph(
 ) -> SymbolGraph:
     symbol_graph = SymbolGraph()
 
+    # Empty symbol graph.
     if len(symbols_str) == 0:
         return symbol_graph
 
     # INITIALS
     initial = convert_str_to_symbol(symbols_str[0])
+    # Add the node to the initials.
     symbol_graph.initials.add(initial)
+    # Add the node to the symbol graph.
+    symbol_graph.nodes[initial]
 
     # Single node
     if len(symbols_str) == 1:
@@ -45,7 +47,10 @@ def construct_symbol_subgraph(
         node = convert_str_to_symbol(symbol_str)
 
         if symbol_previous in symbol_graph.finals:
+            # Add the node to the initials.
             symbol_graph.initials.add(node)
+            # Add the node to the symbol graph
+            symbol_graph.nodes[node]
             symbol_previous = node
             continue
 
@@ -54,6 +59,7 @@ def construct_symbol_subgraph(
         symbol_previous = node
 
     # FINALS
+    # Add the node to the finals.
     symbol_graph.finals.add(symbol_previous)
 
     return cast_symbol_graph(symbol_graph, graph_type)
@@ -184,7 +190,10 @@ def cast_symbol_graph(
         for symbol_final in symbol_graph_copy.finals:
             if symbol_final.content == "EOS_TOKEN":
                 # [PERFORMANCE] Could raise a flag here and avoid calling is_contain_eos_token(symbol_graph_copy.finals).
-                symbol_antecedent = get_symbol_antecedent(
+                # symbol_antecedent = get_symbol_antecedent(
+                #     symbol_graph_copy.nodes, symbol_final
+                # )
+                symbol_antecedents = get_symbol_antecedents(
                     symbol_graph_copy.nodes, symbol_final
                 )
 
@@ -195,13 +204,18 @@ def cast_symbol_graph(
 
                 # Removing the connection of the antecedent with `EOS_TOKEN`.
                 # symbol_graph_copy.nodes[symbol_antecedent].discard(symbol_final)
-                symbol_final = symbol_antecedent
+                # symbol_final = symbol_antecedent
+                symbol_final = symbol_antecedents
+
+            if not isinstance(symbol_final, list):
+                symbol_final = [symbol_final]
 
             # [TODO] Commentary.
             for symbol_initial in symbol_graph_copy.initials:
                 if symbol_initial.content == "EOS_TOKEN":
                     continue
-                symbol_graph_copy.nodes[symbol_final].add(symbol_initial)
+                for final in symbol_final:
+                    symbol_graph_copy.nodes[final].add(symbol_initial)
 
         if is_contain_eos_token(symbol_graph_copy.initials) and is_contain_eos_token(
             symbol_graph_copy.finals
@@ -264,7 +278,6 @@ def cast_symbol_graph(
 # [TODO] Extend the logic to `NONE_ANY` and `NONE_ONCE`
 def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
     queue_symbol_def = convert_str_def_to_str_queue(symbol_def)
-    LAST_STACK_GRAPH_TYPE: SymbolGraphType = SymbolGraphType.STANDARD
 
     # We build graphs from the left, (_1 `def_1` (_2 `def_2` 2_) `def_3` (_3 def_4 3_) 1_),
     # Each time, we encounter an opening delimiter `(, [, {`, we build what we accumulated before it.
@@ -282,132 +295,130 @@ def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
     # ``def_1` (_2 `def_2` 2_)` and ``def_3` (_3 def_4 3_)` while acummulating the result
     # in `symbol_graph_partial_lhs_{1}` .
     def recurse_build(queue_symbol_def: Deque[str]):
-        partial: list[str] = []
-        symbol_graph_partial_lhs: SymbolGraph = SymbolGraph()
-        nonlocal LAST_STACK_GRAPH_TYPE
-        CURRENT_STACK_GRAPH_TYPE: SymbolGraphType = LAST_STACK_GRAPH_TYPE
+        current_stack_accumulated_symbols: list[str] = []
+        current_stack_accumulated_symbol_graph: SymbolGraph = SymbolGraph()
         while True:
             str_symbol = queue_symbol_def.popleft()
 
             if str_symbol in ("(", "[", "{"):
-                if str_symbol == "(":
-                    LAST_STACK_GRAPH_TYPE = SymbolGraphType.STANDARD
-                elif str_symbol == "{":
-                    LAST_STACK_GRAPH_TYPE = SymbolGraphType.NONE_ANY
-                elif str_symbol == "[":
-                    LAST_STACK_GRAPH_TYPE = SymbolGraphType.NONE_ONCE
+                symbol_graph_bottom_level = construct_symbol_subgraph(
+                    current_stack_accumulated_symbols
+                )
 
-                symbol_graph_bottom_level = construct_symbol_subgraph(partial)
-
-                # What happens if `partial` is not cleared?
-
+                # What happens if `current_stack_accumulated_symbols` is not cleared?
                 # Let's have a look at the following example: (_1 `def_1` (_2 `def_2` 2_) `def_3` ) 1_)
-
                 # Each (_NUM should be looked at as a stack,
-
-                # If, within the same stack, the graph (_1 ... 1_) is separated by another stack (_2 `def_2` 2_),
-                # We'll use the terminology `symbol_graph_partial_lhs` for the left part `def_1` and `symbol_graph_partial_rhs`
-                # for the right part `def_3`.
-
-                # If there is no such separation, `symbol_graph_partial_lhs` is empty and `symbol_graph_partial_rhs` will
-                # represent the subgraph instead.
-
-                # After we connect `def_1` and `def_2` into`symbol_graph_partial_lhs`, we'll jump into next iteration
-                # and start building the `def_3`, if partial is not cleared we'll build `def_1 + def_3` instead of only `def_3`.
-
-                # We'll build (_1 `def_1` (_2 `def_2` 2_) `def_1` `def_3` ) 1_) instead of (_1 `def_1` (_2 `def_2` 2_) `def_3` ) 1_).
-                partial.clear()
+                # Since we're building accordingly from the left, what'll happen is upon leaving the second
+                # stack, we'll have already built and connect `def_1` and `def_2`.
+                # Then while consuming the symbols `def_3`, we'll have additional symbols fron `def_1`.
+                current_stack_accumulated_symbols.clear()
 
                 symbol_graph_upper_level = recurse_build(queue_symbol_def)
 
                 # Accumulates successive bottom-upper stack level symbol graph builds.
-                if symbol_graph_partial_lhs:
-                    symbol_graph_partial_lhs_next = connect_symbol_graph(
+                if current_stack_accumulated_symbol_graph:
+                    from_upper_stack_to_accumulate_symbol_graph = connect_symbol_graph(
                         symbol_graph_bottom_level, symbol_graph_upper_level
                     )
-                    symbol_graph_partial_lhs = connect_symbol_graph(
-                        symbol_graph_partial_lhs, symbol_graph_partial_lhs_next
+                    current_stack_accumulated_symbol_graph = connect_symbol_graph(
+                        current_stack_accumulated_symbol_graph,
+                        from_upper_stack_to_accumulate_symbol_graph,
                     )
                 else:
-                    symbol_graph_partial_lhs = connect_symbol_graph(
+                    current_stack_accumulated_symbol_graph = connect_symbol_graph(
                         symbol_graph_bottom_level, symbol_graph_upper_level
                     )
 
                 # Avoids leaving the the `lower` level stack after terminating a `higher` level stack.
-                # If we do leave, `symbol_graph_partial_rhs` will not be constructed if it exists!
-                # If it doesn't exist, then we return the `symbol_graph_partial_lhs`.
                 if bool(queue_symbol_def):
                     continue
 
                 # We need to return at the last delimiter to not pop from an empty queue,
                 # the expression needs to be correct syntactically.
-                return symbol_graph_partial_lhs
+                return current_stack_accumulated_symbol_graph
 
-            # -- Case 1: `symbol_graph_partial_lhs` is not empty and `symbol_graph_partial_rhs` is not empty:
-            # (_1 `def_1` (_2 `def_2` _2) `def_3` _1), `def_1` and `def_2` will be connected into `symbol_graph_partial_lhs`,
-            # the rest def_3 will be set to `symbol_graph_partial_rhs` and connect_symbol_graph(symbol_graph_partial_lhs, symbol_graph_partial_rhs) is returned.
-            # -- Case 2: `symbol_graph_partial_lhs` is not empty and `symbol_graph_partial_rhs` is empty:
-            # (_1 `def_1` (_2 `def_2` _2) _1), `def_1` and `def_2` will be connected into `symbol_graph_partial_lhs`, since `partial` is cleared
-            # `symbol_graph_partial_rhs` will be empty and and connect_symbol_graph(symbol_graph_partial_lhs, symbol_graph_partial_rhs)
-            # will return symbol_graph_partial_lhs.
-            # -- Case 3: `symbol_graph_partial_lhs` is empty and `symbol_graph_partial_rhs` is not empty:
-            # It means that there is a righthand side without a lefthand side, it's impossible.
-            # -- Case 4: `symbol_graph_partial_lhs` is empty and `symbol_graph_partial_rhs` is empty:
-            # ()
-            # Same logic applies to "]" and "}".
-            elif str_symbol == ")":
-                symbol_graph_partial_rhs = construct_symbol_subgraph(partial)
-                return connect_symbol_graph(
-                    symbol_graph_partial_lhs, symbol_graph_partial_rhs
-                )
+            if str_symbol in (")", "]", "}"):
+                if str_symbol == ")":
+                    SYMBOL_GRAPH_TYPE = SymbolGraphType.STANDARD
+                elif str_symbol == "}":
+                    SYMBOL_GRAPH_TYPE = SymbolGraphType.NONE_ANY
+                elif str_symbol == "]":
+                    SYMBOL_GRAPH_TYPE = SymbolGraphType.NONE_ONCE
 
-            elif str_symbol == "}":
-                symbol_graph_partial_rhs = construct_symbol_subgraph(
-                    partial, SymbolGraphType.NONE_ANY
+                # Handles the case where there exist no opening `("(", "[", "{")` delimiter next to '|.
+                # Example: (_1 `def_1` {_2 `def_2` 2_} `def_4` | `def_3` 1_), with `def_4` which could be empty.
+                # In such case, we'll return the union of the left definition (`def_1` {`def_2`} `def_4`) to the `|`
+                # with the right definition (`def_3`).
+                if "|" in current_stack_accumulated_symbols:
+                    index = current_stack_accumulated_symbols.index("|")
+                    symbol_graph_or_lhs, symbol_graph_or_rhs = (
+                        construct_symbol_subgraph(
+                            current_stack_accumulated_symbols[:index]
+                        ),
+                        construct_symbol_subgraph(
+                            current_stack_accumulated_symbols[index + 1 :]
+                        ),
+                    )
+                    # Accumulate the left symbol graph with left portion before the '|' symbol.
+                    current_stack_accumulated_symbol_graph = connect_symbol_graph(
+                        current_stack_accumulated_symbol_graph, symbol_graph_or_lhs
+                    )
+                    # Union the left symbol graph with the right portion after the '|' symbol.
+                    symbol_graph_out = union_symbol_graph(
+                        current_stack_accumulated_symbol_graph, symbol_graph_or_rhs
+                    )
+                    return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)
+
+                current_stack_to_accumulate_symbol_graph = construct_symbol_subgraph(
+                    current_stack_accumulated_symbols
                 )
                 symbol_graph_out = connect_symbol_graph(
-                    symbol_graph_partial_lhs, symbol_graph_partial_rhs
+                    current_stack_accumulated_symbol_graph,
+                    current_stack_to_accumulate_symbol_graph,
                 )
-                return cast_symbol_graph(symbol_graph_out, SymbolGraphType.NONE_ANY)
-
-            elif str_symbol == "]":
-                symbol_graph_partial_rhs = construct_symbol_subgraph(
-                    partial, SymbolGraphType.NONE_ONCE
-                )
-                symbol_graph_out = connect_symbol_graph(
-                    symbol_graph_partial_lhs, symbol_graph_partial_rhs
-                )
-                return cast_symbol_graph(symbol_graph_out, SymbolGraphType.NONE_ONCE)
+                return cast_symbol_graph(symbol_graph_out, SYMBOL_GRAPH_TYPE)
 
             elif str_symbol == "|":
-                # This means that the `|` is inside a stack not between stacks.
-                # Example of (inside a stack): (_1 `subdef_1` | `subdef_2` 1_).
-                # Example of (between stacks):
-                # (_1 (_2 `def_1` _2) | (_3 `def_3` _3)  1_)
-                # or (_1 (_2 `def_1` _2) | def_2  1_).
+                # Handles the case where there exist no opening `("(", "[", "{")` delimiter next to '|.
+                if queue_symbol_def[0] not in ["(", "[", "{"]:
+                    current_stack_accumulated_symbols.append(str_symbol)
+                    continue
 
-                # Need information of the last delimiter ('(', '[' or '{')) to set
-                # the construction to the right type, that's where `LAST_DELIMITER_TYPE`
-                # comes very handy.
-                if not symbol_graph_partial_lhs:
-                    symbol_graph_partial_lhs = construct_symbol_subgraph(
-                        partial, LAST_STACK_GRAPH_TYPE
-                    )
-                else:
-                    symbol_graph_partial_lhs_prev = symbol_graph_partial_lhs
-                    symbol_graph_partial_lhs = construct_symbol_subgraph(
-                        partial, LAST_STACK_GRAPH_TYPE
-                    )
-                    symbol_graph_partial_lhs = connect_symbol_graph(
-                        symbol_graph_partial_lhs_prev, symbol_graph_partial_lhs
-                    )
-
-                symbol_graph_partial_rhs = recurse_build(queue_symbol_def)
-                symbol_graph_out = union_symbol_graph(
-                    symbol_graph_partial_lhs, symbol_graph_partial_rhs
+                # Handles the case where there exist an opening `("(", "[", "{")` delimiter next to '|.
+                # Creates subgraph of accumulated symbols, if they exist; else return an empty graph.
+                current_stack_to_accumulate_symbol_graph = construct_symbol_subgraph(
+                    current_stack_accumulated_symbols
                 )
-                return cast_symbol_graph(symbol_graph_out, CURRENT_STACK_GRAPH_TYPE)
 
-            partial.append(str_symbol)
+                # Consumes `current_stack_accumulated_symbols.`
+                current_stack_accumulated_symbols.clear()
+
+                # Accumulates `current_stack_accumulated_symbol_graph`.
+                current_stack_accumulated_symbol_graph = connect_symbol_graph(
+                    current_stack_accumulated_symbol_graph,
+                    current_stack_to_accumulate_symbol_graph,
+                )
+
+                # Avoids opening an additional stack.
+                # One when encountering the symbol `|` and second with an opening delimiter (`(`, `[`, `{`).
+                # Not doing so will (steal) an enclosing delimiter, thus breaking the logic.
+                if queue_symbol_def[0] in ["(", "[", "{"]:
+                    queue_symbol_def.popleft()
+
+                from_upper_stack_to_accumulate_symbol_graph = recurse_build(
+                    queue_symbol_def
+                )
+
+                current_stack_accumulated_symbol_graph = union_symbol_graph(
+                    current_stack_accumulated_symbol_graph,
+                    from_upper_stack_to_accumulate_symbol_graph,
+                )
+
+                if bool(queue_symbol_def):
+                    continue
+
+                return current_stack_accumulated_symbol_graph
+
+            current_stack_accumulated_symbols.append(str_symbol)
 
     return recurse_build(queue_symbol_def)
