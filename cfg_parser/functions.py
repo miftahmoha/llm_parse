@@ -1,9 +1,9 @@
 from collections import defaultdict, deque
-from copy import deepcopy
 from typing import Deque
+import re
 
 from cfg_parser.base import Symbol, SymbolType, SymbolGraph, OrderedSet
-from cfg_parser.exceptions import SymbolNotFound
+from cfg_parser.exceptions import SymbolNotFound, InvalidSymbol, InvalidDelimiters, InvalidGrammar
 
 
 def convert_str_to_symbol(symbol_str: str) -> Symbol:
@@ -25,19 +25,9 @@ def convert_str_to_symbol(symbol_str: str) -> Symbol:
     return node
 
 
-def get_symbol_antecedent(
-    symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]], search_symbol: Symbol
-) -> Symbol:
-    for symbol_parent, symbol_children in symbol_graph_nodes.items():
-        if search_symbol in symbol_children:
-            return symbol_parent
-
-    raise SymbolNotFound(f"Symbol {search_symbol.content} was not found.")
-
-
 def get_symbol_antecedents(
     symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]], search_symbol: Symbol
-) -> Symbol:
+) -> list[Symbol]:
     symbol_antecedents = []
     for symbol_parent, symbol_children in symbol_graph_nodes.items():
         if search_symbol in symbol_children:
@@ -60,7 +50,7 @@ def is_contain_eos_token(symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]]) -
 
 def discard_single_nodes(
     symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]]
-) -> SymbolGraph:
+) -> dict[Symbol, OrderedSet[Symbol]]:
     single_node_symbols = []
     symbol_graph_nodes_copy = symbol_graph_nodes.copy()
 
@@ -87,10 +77,74 @@ def get_symbols_with_content(
 
     return symbols
 
+# Does every opening delimiter have an enclosing one?
+def check_for_delimiter_coherence(symbol_def_str: list[str]):
+    stack_delim_tracker = deque()
 
-def check_for_errors(symbol_def: str):
+    # A standard delimiter is always added at the beggining.
+    stack_delim_tracker.append('(')
+
     # [TODO] Throws the corresponding exceptions.
-    pass
+    for symbol_str in symbol_def_str:
+        if symbol_str == '(':
+            stack_delim_tracker.append(symbol_str)
+
+        elif symbol_str == ')':
+            if stack_delim_tracker[-1] != '(':
+                raise InvalidDelimiters(f'Non enclosed delimiter {"("} in {"".join(stack_delim_tracker)}')
+            stack_delim_tracker.pop()
+
+        elif symbol_str == '{':
+            stack_delim_tracker.append(symbol_str)
+            
+        elif symbol_str == '}':
+            if stack_delim_tracker[-1] != '{':
+                raise InvalidDelimiters(f'Non enclosed delimiter {"{"} in {"".join(stack_delim_tracker)}')
+            stack_delim_tracker.pop()
+
+        elif symbol_str == '[':
+            stack_delim_tracker.append(symbol_str)
+
+        elif symbol_str == ']':
+            if stack_delim_tracker[-1] != '[':
+                raise InvalidDelimiters(f'Non enclosed delimiter {"["} in {"".join(stack_delim_tracker)}')
+
+            stack_delim_tracker.pop()
+
+
+# Are symbols syntatically correct? 
+def check_syntactic_soundness_symbols(symbol_def_str: list[str]):
+    def xor(condition_lhs: bool, condition_rhs: bool):
+        return bool(condition_lhs) ^ bool(condition_rhs)
+
+    def is_terminal(symbol_str: str):
+        return symbol_str[0] == '"' and symbol_str[-1] == '"'
+
+    # [NOTE] `EOS_TOKEN` is a special symbol, turn it into a terminal?
+    def is_special_symbol(symbol_str: str):
+        return len(symbol_str) == 1
+
+    def is_regex_symbol(symbol_str: str):
+        return symbol_str.startswith("Regex(") and symbol_str.endswith(")")
+
+    # Special characters REGEX.
+    regex = re.compile(r'[@_!#$%^&*()<>?/\\|}~:]')
+
+    for symbol_str in symbol_def_str:
+        # 1) Are terminal symbols enclosed with `"` or without? `"symbol` or `symbol"` shouldn't be allowed.
+        if xor(symbol_str[0] == '"', symbol_str[-1] == '"'):
+            raise InvalidSymbol(f'Invalid symbol name {symbol_str}, symbols can be either `symbol_str` for non-terminal symbols or `"symbol_str" for terminal symbols.')
+        
+        # 2) Special characters shouldn't be allowed as symbol names for non terminals.
+        if (not is_terminal(symbol_str)) and (not is_special_symbol(symbol_str)) and (not is_regex_symbol(symbol_str)) and (regex.search(symbol_str) != None):
+            raise InvalidSymbol(f'Invalid symbol name {symbol_str}, special characters are not allowed')
+
+
+# This should check if the definition is correct.
+def check_for_errors(symbol_def_str: list[str]):
+    # [NOTE] Needs tests.
+    check_for_delimiter_coherence(symbol_def_str)
+    check_syntactic_soundness_symbols(symbol_def_str)
 
 
 # [TODO] Need additional initial `( )` for `build_full_graph` to start.
@@ -126,13 +180,16 @@ def insert_space_between_delimiters(s):
     return "".join(result)
 
 
-def pre_process_symbol_def(symbol_def: str):
+def pre_process_symbol_def(symbol_def: str) -> str:
     return insert_space_between_delimiters(insert_standard_delimiters(symbol_def))
 
 
 def convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
     pre_processed_symbol_def = pre_process_symbol_def(symbol_def)
     symbols = pre_processed_symbol_def.split()
+
+    # Check for errors.
+    check_for_errors(symbols)
 
     queue = deque()
     for symbol in symbols:
@@ -147,7 +204,7 @@ def get_symbols_from_generated_symbol_graph(
     symbols: dict[str, Symbol] = {}
 
     start = symbol_graph.initials
-    visited = new_dfs(symbol_graph.copy(), start)
+    visited = dfs(symbol_graph.copy(), start)
 
     # The default int is OrderedSet to 0.
     order: dict[str, int] = defaultdict(int)
@@ -158,7 +215,7 @@ def get_symbols_from_generated_symbol_graph(
     return symbols
 
 
-def new_dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
+def dfs(symbol_graph: SymbolGraph, start: OrderedSet[Symbol]) -> list[Symbol]:
     visited = []
 
     queue = deque()  # type: ignore
