@@ -2,16 +2,13 @@ from collections import defaultdict
 
 import pytest
 
-from cfg_parser.cfg_parser import (
-    construct_symbol_subgraph,
-    connect_symbol_graph,
+from cfg_parse.base import OrderedSet, Symbol, SymbolGraph
+from cfg_parse.cfg_build.build import (
     build_symbol_graph,
+    connect_symbol_graph,
+    construct_symbol_subgraph,
 )
-from cfg_parser.base import OrderedSet, Symbol, SymbolGraph
-from cfg_parser.functions import (
-    get_symbols_from_generated_symbol_graph,
-)
-
+from cfg_parse.cfg_build.helpers import get_symbols_from_generated_symbol_graph
 
 # ----------------------------- construct_symbol_subgraph -----------------------------
 
@@ -79,8 +76,7 @@ def test_construct_symbol_subgraph_simple_subdef_with_regex(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["[0-9]*.[0-9]*|0"]])
-    nodes = defaultdict(
-        OrderedSet[Symbol],
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols["[0-9]*.[0-9]*|0"]: OrderedSet([]),
         },
@@ -110,8 +106,7 @@ def test_construct_symbol_subgraph_subdef_with_regex_and_or(
             symbols['"("|0'],
         ]
     )
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols["[0-9]*.[0-9]*|0"]: OrderedSet([]),
             symbols['"-"|0']: OrderedSet([symbols["factor|0"]]),
@@ -147,8 +142,7 @@ def test_connect_symbol_graph_simple_subdefs(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet([symbols['")"|0']]),
@@ -170,8 +164,7 @@ def test_connect_symbol_graph_simple_subdefs_with_or(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["factor|0"], symbols["factor|1"]])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols["factor|0"]: OrderedSet([symbols['"+"|0']]),
             symbols["factor|1"]: OrderedSet([symbols['"-"|0']]),
@@ -198,8 +191,7 @@ def test_connect_symbol_graph_subdefs_with_regex_and_or(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols["factor|0"], symbols["factor|1"]])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols["factor|0"]: OrderedSet([symbols['"+"|0']]),
             symbols["factor|1"]: OrderedSet([symbols['"-"|0']]),
@@ -247,7 +239,7 @@ def def_without_or_without_special_delimiters():
 # ----------------------------- build_symbol_graph -----------------------------
 
 
-# || ----------------------------- SymbolGraphType.STANDARD ----------------------------- ||
+# -------- SymbolGraphType.STANDARD --------
 
 
 def test_build_graph_def_without_or_without_special_delimiters(
@@ -259,8 +251,7 @@ def test_build_graph_def_without_or_without_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet([symbols["factor|0"]]),
@@ -290,8 +281,7 @@ def test_build_graph_def_without_or_seq_without_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet([symbols["factor|0"]]),
@@ -328,8 +318,7 @@ def test_build_graph_def_without_or_seq_disrupt_in_between_and_end_without_speci
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet([symbols["factor|0"]]),
@@ -370,8 +359,7 @@ def test_build_graph_def_with_out_or_without_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -403,8 +391,7 @@ def test_build_graph_def_with_out_or_ext_without_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -438,8 +425,7 @@ def test_build_graph_def_with_in_and_out_or_without_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -477,8 +463,7 @@ def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -499,7 +484,7 @@ def test_build_graph_def_with_in_and_out_ext_or_without_special_delimiters(
     assert true_symbol_graph == generated_symbol_graph
 
 
-# || ----------------------------- SymbolGraphType.NONE_ANY ----------------------------- ||
+# -------- SymbolGraphType.NONE_ANY --------
 
 
 @pytest.fixture
@@ -515,8 +500,7 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
     )
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -536,7 +520,7 @@ def test_build_graph_def_with_or_with_special_delimiters_none_any(
     assert true_symbol_graph == generated_symbol_graph
 
 
-# || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY ----------------------------- ||
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY --------
 
 
 @pytest.fixture
@@ -553,8 +537,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -591,8 +574,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_any(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -634,8 +616,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_any
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -699,8 +680,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -766,8 +746,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -832,8 +811,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -901,8 +879,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -956,7 +933,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     assert true_symbol_graph == generated_symbol_graph
 
 
-# || ----------------------------- SymbolGraphType.NONE_ONE ----------------------------- ||
+# -------- SymbolGraphType.NONE_ONE --------
 
 
 @pytest.fixture
@@ -973,8 +950,7 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -992,7 +968,7 @@ def test_build_graph_def_without_or_with_special_delimiters_none_once(
     assert true_symbol_graph == generated_symbol_graph
 
 
-# || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ONE ----------------------------- ||
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ONE --------
 
 
 @pytest.fixture
@@ -1009,8 +985,7 @@ def test_build_graph_def_with_out_or_with_special_delimiters_none_once(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1046,8 +1021,7 @@ def test_build_graph_def_with_in_and_out_or_with_special_delimiters_none_once(
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1085,8 +1059,7 @@ def test_build_graph_def_with_in_and_out_ext_or_with_special_delimiters_none_onc
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1129,8 +1102,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_with_special_delimiters_none
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1175,8 +1147,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_with_special_delimiter
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1220,8 +1191,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_end_with_speci
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1273,8 +1243,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(
@@ -1307,7 +1276,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     assert true_symbol_graph == generated_symbol_graph
 
 
-# || ----------------------------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.NONE_ONE ----------------------------- ||
+# -------- SymbolGraphType.STANDARD + SymbolGraphType.NONE_ANY + SymbolGraphType.NONE_ONE --------
 
 
 @pytest.fixture
@@ -1324,8 +1293,7 @@ def test_build_graph_def_with_in_and_out_ext_or_seq_mixed_disrupt_in_between_and
     symbols = get_symbols_from_generated_symbol_graph(generated_symbol_graph)
 
     initials = OrderedSet([symbols['"("|0']])
-    nodes = defaultdict(
-        OrderedSet,
+    nodes: dict[Symbol, OrderedSet] = dict(
         {
             symbols['"("|0']: OrderedSet([symbols["expression|0"]]),
             symbols["expression|0"]: OrderedSet(

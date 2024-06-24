@@ -1,10 +1,9 @@
-from typing import TypeVar, Generic, Iterable, Iterator
-from dataclasses import dataclass, field
-from collections import defaultdict
-from enum import Enum
-from copy import deepcopy
-
 import uuid
+from collections import defaultdict
+from copy import deepcopy
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Deque, Generic, Iterable, Iterator, Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -57,7 +56,7 @@ class OrderedSet(Generic[T]):
 
 class SymbolType(Enum):
     TERMINAL = 1
-    NOT_TERMINAL = 2
+    NON_TERMINAL = 2
     REGEX = 3
     SPECIAL = 4
 
@@ -121,3 +120,13 @@ class SymbolGraph:
 
     def copy(self):
         return deepcopy(self)
+
+
+@dataclass
+class SymbolGraphState:
+    graph: SymbolGraph
+    label: str
+    state: Optional[Symbol] = None
+
+
+CFGGenerationState = Optional[Deque[SymbolGraphState]]

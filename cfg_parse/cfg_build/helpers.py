@@ -1,31 +1,30 @@
+import re
 from collections import defaultdict, deque
 from typing import Deque
-import re
 
-from cfg_parser.base import Symbol, SymbolType, SymbolGraph, OrderedSet
-from cfg_parser.exceptions import SymbolNotFound, InvalidSymbol, InvalidDelimiters, InvalidGrammar
+from cfg_parse.base import OrderedSet, Symbol, SymbolGraph, SymbolType
+from cfg_parse.exceptions import InvalidDelimiters, InvalidSymbol, SymbolNotFound
 
 
-def convert_str_to_symbol(symbol_str: str) -> Symbol:
+def _convert_str_to_symbol(symbol_str: str) -> Symbol:
     if symbol_str.startswith('"') and symbol_str.endswith('"'):
         node = Symbol(symbol_str, SymbolType.TERMINAL)
 
     elif symbol_str.startswith("Regex(") and symbol_str.endswith(")"):
         # Index to strip `symbol` from `Regex()`.
         start = symbol_str.find("(")
-
         node = Symbol(symbol_str[start + 1 : -1], SymbolType.REGEX)
 
     elif symbol_str in ("(", ")", "[", "]", "{", "}"):
         node = Symbol(symbol_str, SymbolType.SPECIAL)
 
     else:
-        node = Symbol(symbol_str, SymbolType.NOT_TERMINAL)
+        node = Symbol(symbol_str, SymbolType.NON_TERMINAL)
 
     return node
 
 
-def get_symbol_antecedents(
+def _get_symbol_antecedents(
     symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]], search_symbol: Symbol
 ) -> list[Symbol]:
     symbol_antecedents = []
@@ -41,14 +40,14 @@ def get_symbol_antecedents(
     return symbol_antecedents
 
 
-def is_contain_eos_token(symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]]) -> bool:
+def _ordered_set_contains_eos_token(symbol_graph_nodes: OrderedSet[Symbol]) -> bool:
     for symbol in symbol_graph_nodes:
         if symbol.content == "EOS_TOKEN" and symbol.s_type == SymbolType.SPECIAL:
             return True
     return False
 
 
-def discard_single_nodes(
+def _discard_single_nodes(
     symbol_graph_nodes: dict[Symbol, OrderedSet[Symbol]]
 ) -> dict[Symbol, OrderedSet[Symbol]]:
     single_node_symbols = []
@@ -64,7 +63,7 @@ def discard_single_nodes(
     return symbol_graph_nodes_copy
 
 
-def get_symbols_with_content(
+def _get_symbols_with_content(
     symbol_graph: OrderedSet[Symbol], content: str
 ) -> list[Symbol]:
     symbols = []
@@ -77,43 +76,50 @@ def get_symbols_with_content(
 
     return symbols
 
+
 # Does every opening delimiter have an enclosing one?
-def check_for_delimiter_coherence(symbol_def_str: list[str]):
-    stack_delim_tracker = deque()
+def _check_for_delimiter_coherence(symbol_def_str: list[str]):
+    stack_delim_tracker: Deque = deque()
 
     # A standard delimiter is always added at the beggining.
-    stack_delim_tracker.append('(')
+    stack_delim_tracker.append("(")
 
     # [TODO] Throws the corresponding exceptions.
     for symbol_str in symbol_def_str:
-        if symbol_str == '(':
+        if symbol_str == "(":
             stack_delim_tracker.append(symbol_str)
 
-        elif symbol_str == ')':
-            if stack_delim_tracker[-1] != '(':
-                raise InvalidDelimiters(f'Non enclosed delimiter {"("} in {"".join(stack_delim_tracker)}')
+        elif symbol_str == ")":
+            if stack_delim_tracker[-1] != "(":
+                raise InvalidDelimiters(
+                    f'Non enclosed delimiter {"("} in {"".join(stack_delim_tracker)}'
+                )
             stack_delim_tracker.pop()
 
-        elif symbol_str == '{':
-            stack_delim_tracker.append(symbol_str)
-            
-        elif symbol_str == '}':
-            if stack_delim_tracker[-1] != '{':
-                raise InvalidDelimiters(f'Non enclosed delimiter {"{"} in {"".join(stack_delim_tracker)}')
-            stack_delim_tracker.pop()
-
-        elif symbol_str == '[':
+        elif symbol_str == "{":
             stack_delim_tracker.append(symbol_str)
 
-        elif symbol_str == ']':
-            if stack_delim_tracker[-1] != '[':
-                raise InvalidDelimiters(f'Non enclosed delimiter {"["} in {"".join(stack_delim_tracker)}')
+        elif symbol_str == "}":
+            if stack_delim_tracker[-1] != "{":
+                raise InvalidDelimiters(
+                    f'Non enclosed delimiter {"{"} in {"".join(stack_delim_tracker)}'
+                )
+            stack_delim_tracker.pop()
+
+        elif symbol_str == "[":
+            stack_delim_tracker.append(symbol_str)
+
+        elif symbol_str == "]":
+            if stack_delim_tracker[-1] != "[":
+                raise InvalidDelimiters(
+                    f'Non enclosed delimiter {"["} in {"".join(stack_delim_tracker)}'
+                )
 
             stack_delim_tracker.pop()
 
 
-# Are symbols syntatically correct? 
-def check_syntactic_soundness_symbols(symbol_def_str: list[str]):
+# Are symbols syntatically correct?
+def _check_syntactic_soundness_symbols(symbol_def_str: list[str]):
     def xor(condition_lhs: bool, condition_rhs: bool):
         return bool(condition_lhs) ^ bool(condition_rhs)
 
@@ -128,70 +134,79 @@ def check_syntactic_soundness_symbols(symbol_def_str: list[str]):
         return symbol_str.startswith("Regex(") and symbol_str.endswith(")")
 
     # Special characters REGEX.
-    regex = re.compile(r'[@_!#$%^&*()<>?/\\|}~:]')
+    regex = re.compile(r"[@_!#$%^&*()<>?/\\|}~:]")
 
     for symbol_str in symbol_def_str:
         # 1) Are terminal symbols enclosed with `"` or without? `"symbol` or `symbol"` shouldn't be allowed.
         if xor(symbol_str[0] == '"', symbol_str[-1] == '"'):
-            raise InvalidSymbol(f'Invalid symbol name {symbol_str}, symbols can be either `symbol_str` for non-terminal symbols or `"symbol_str" for terminal symbols.')
-        
+            raise InvalidSymbol(
+                f'Invalid symbol name {symbol_str}, symbols can be either `symbol_str` for non-terminal symbols or `"symbol_str" for terminal symbols.'
+            )
+
         # 2) Special characters shouldn't be allowed as symbol names for non terminals.
-        if (not is_terminal(symbol_str)) and (not is_special_symbol(symbol_str)) and (not is_regex_symbol(symbol_str)) and (regex.search(symbol_str) != None):
-            raise InvalidSymbol(f'Invalid symbol name {symbol_str}, special characters are not allowed')
+        if (
+            (not is_terminal(symbol_str))
+            and (not is_special_symbol(symbol_str))
+            and (not is_regex_symbol(symbol_str))
+            and (regex.search(symbol_str) is not None)
+        ):
+            raise InvalidSymbol(
+                f"Invalid symbol name {symbol_str}, special characters are not allowed"
+            )
 
 
 # This should check if the definition is correct.
-def check_for_errors(symbol_def_str: list[str]):
+def _check_for_errors_symbol_def(symbol_def_str: list[str]):
     # [NOTE] Needs tests.
-    check_for_delimiter_coherence(symbol_def_str)
-    check_syntactic_soundness_symbols(symbol_def_str)
+    _check_for_delimiter_coherence(symbol_def_str)
+    _check_syntactic_soundness_symbols(symbol_def_str)
 
 
 # [TODO] Need additional initial `( )` for `build_full_graph` to start.
-def insert_standard_delimiters(symbol_def: str):
+def _insert_standard_delimiters(symbol_def: str):
     return "(" + symbol_def + ")"
 
 
 # Insert space between delimiters, `terminal` delimiters `"(", ")", "[", "]", "{", "}"` are not considered.
-def insert_space_between_delimiters(s):
+def _insert_space_between_delimiters(symbol_def_str: list[str]) -> str:
     in_quote = False
     in_regex = False
     result = []
     i = 0
 
-    while i < len(s):
-        if s[i] == '"':
+    while i < len(symbol_def_str):
+        if symbol_def_str[i] == '"':
             in_quote = not in_quote
-            result.append(s[i])
-        elif s[i : i + 5] == "Regex":
+            result.append(symbol_def_str[i])
+        elif symbol_def_str[i : i + 5] == "Regex":
             in_regex = True
-            result.append(s[i])
-        elif s[i] in "([{" and not in_quote and not in_regex:
-            result.append(" " + s[i] + " ")
-        elif s[i] in ")]}" and not in_quote and not in_regex:
-            result.append(" " + s[i] + " ")
-        elif s[i] == ")" and in_regex:
+            result.append(symbol_def_str[i])
+        elif symbol_def_str[i] in "([{" and not in_quote and not in_regex:
+            result.append(" " + symbol_def_str[i] + " ")
+        elif symbol_def_str[i] in ")]}" and not in_quote and not in_regex:
+            result.append(" " + symbol_def_str[i] + " ")
+        elif symbol_def_str[i] == ")" and in_regex:
             in_regex = False
-            result.append(s[i])
+            result.append(symbol_def_str[i])
         else:
-            result.append(s[i])
+            result.append(symbol_def_str[i])
         i += 1
 
     return "".join(result)
 
 
-def pre_process_symbol_def(symbol_def: str) -> str:
-    return insert_space_between_delimiters(insert_standard_delimiters(symbol_def))
+def _pre_process_symbol_def(symbol_def: str) -> str:
+    return _insert_space_between_delimiters(_insert_standard_delimiters(symbol_def))
 
 
-def convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
-    pre_processed_symbol_def = pre_process_symbol_def(symbol_def)
+def _convert_str_def_to_str_queue(symbol_def: str) -> Deque[str]:
+    pre_processed_symbol_def = _pre_process_symbol_def(symbol_def)
     symbols = pre_processed_symbol_def.split()
 
     # Check for errors.
-    check_for_errors(symbols)
+    _check_for_errors_symbol_def(symbols)
 
-    queue = deque()
+    queue: Deque = deque()
     for symbol in symbols:
         queue.append(symbol)
 
@@ -206,7 +221,7 @@ def get_symbols_from_generated_symbol_graph(
     start = symbol_graph.initials
     visited = dfs(symbol_graph.copy(), start)
 
-    # The default int is OrderedSet to 0.
+    # The default int is set to 0.
     order: dict[str, int] = defaultdict(int)
     for symbol in visited:
         symbols[symbol.content + f"|{order[symbol.content]}"] = symbol

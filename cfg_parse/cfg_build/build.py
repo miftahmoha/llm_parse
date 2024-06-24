@@ -1,14 +1,13 @@
-from collections import defaultdict
-from typing import Deque, cast
+from typing import Deque
 
-from cfg_parser.base import OrderedSet, Symbol, SymbolType, SymbolGraph, SymbolGraphType
-from cfg_parser.functions import (
-    convert_str_to_symbol,
-    convert_str_def_to_str_queue,
-    get_symbol_antecedents,
-    get_symbols_with_content,
-    discard_single_nodes,
-    is_contain_eos_token,
+from cfg_parse.base import OrderedSet, Symbol, SymbolGraph, SymbolGraphType, SymbolType
+from cfg_parse.cfg_build.helpers import (
+    _convert_str_def_to_str_queue,
+    _convert_str_to_symbol,
+    _discard_single_nodes,
+    _get_symbol_antecedents,
+    _get_symbols_with_content,
+    _ordered_set_contains_eos_token,
 )
 
 
@@ -22,7 +21,7 @@ def construct_symbol_subgraph(
         return symbol_graph
 
     # INITIALS
-    initial = convert_str_to_symbol(symbols_str[0])
+    initial = _convert_str_to_symbol(symbols_str[0])
     # Add the node to the initials.
     symbol_graph.initials.add(initial)
     # Add the node to the symbol graph.
@@ -39,12 +38,11 @@ def construct_symbol_subgraph(
 
     symbol_previous = initial
     for symbol_str in symbols_str[1:]:
-
         if symbol_str == "|":
             symbol_graph.finals.add(symbol_previous)
             continue
 
-        node = convert_str_to_symbol(symbol_str)
+        node = _convert_str_to_symbol(symbol_str)
 
         if symbol_previous in symbol_graph.finals:
             # Add the node to the initials.
@@ -83,17 +81,16 @@ def connect_symbol_graph(
     symbol_graph_rhs_copy = symbol_graph_rhs.copy()
 
     # Single node symbols will connect through their `INITIALS` and `FINALS`.
-    symbol_graph_lhs_copy.nodes = discard_single_nodes(symbol_graph_lhs_copy.nodes)
-    symbol_graph_rhs_copy.nodes = discard_single_nodes(symbol_graph_rhs_copy.nodes)
+    symbol_graph_lhs_copy.nodes = _discard_single_nodes(symbol_graph_lhs_copy.nodes)
+    symbol_graph_rhs_copy.nodes = _discard_single_nodes(symbol_graph_rhs_copy.nodes)
 
     # Union the connections between both symbol graphs.
     symbol_graph_nodes_out = symbol_graph_lhs_copy.nodes | symbol_graph_rhs_copy.nodes
 
     # Connect the left `FINALS` (also takes care of `EOS_TOKENS`) with the right `INITIALS`.
     for symbol_final in symbol_graph_lhs_copy.finals:
-
         if symbol_final.content == "EOS_TOKEN":
-            symbol_antecedents = get_symbol_antecedents(
+            symbol_antecedents = _get_symbol_antecedents(
                 symbol_graph_nodes_out, symbol_final
             )
             # Discarding the connection to `EOS_TOKEN` symbol.
@@ -139,10 +136,10 @@ def union_symbol_graph(
     # Extend the left `INITIALS` to the right `INITIALS`, `|` is not used because it discards the order (*for testing).
 
     # Removes duplicates (if they exist) `EOS_TOKEN` symbols from `INITIALS`.
-    if is_contain_eos_token(symbol_graph_lhs_copy.initials) and is_contain_eos_token(
-        symbol_graph_rhs_copy.initials
-    ):
-        symbol_special_eos_token = get_symbols_with_content(
+    if _ordered_set_contains_eos_token(
+        symbol_graph_lhs_copy.initials
+    ) and _ordered_set_contains_eos_token(symbol_graph_rhs_copy.initials):
+        symbol_special_eos_token = _get_symbols_with_content(
             symbol_graph_rhs_copy.initials, "EOS_TOKEN"
         )
         symbol_graph_rhs_copy.initials.discard(symbol_special_eos_token[0])
@@ -193,7 +190,7 @@ def cast_symbol_graph(
                 # symbol_antecedent = get_symbol_antecedent(
                 #     symbol_graph_copy.nodes, symbol_final
                 # )
-                symbol_antecedents = get_symbol_antecedents(
+                symbol_antecedents = _get_symbol_antecedents(
                     symbol_graph_copy.nodes, symbol_final
                 )
 
@@ -217,12 +214,12 @@ def cast_symbol_graph(
                 for final in symbol_final:
                     symbol_graph_copy.nodes[final].add(symbol_initial)
 
-        if is_contain_eos_token(symbol_graph_copy.initials) and is_contain_eos_token(
-            symbol_graph_copy.finals
-        ):
+        if _ordered_set_contains_eos_token(
+            symbol_graph_copy.initials
+        ) and _ordered_set_contains_eos_token(symbol_graph_copy.finals):
             return symbol_graph_copy
 
-        if not is_contain_eos_token(symbol_graph_copy.initials):
+        if not _ordered_set_contains_eos_token(symbol_graph_copy.initials):
             # `EOS_TOKEN` symbol for the initials.
             symbol_special_eos_initial = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
 
@@ -232,7 +229,7 @@ def cast_symbol_graph(
             # Add `EOS_TOKEN` as node.
             symbol_graph_copy.nodes[symbol_special_eos_initial]
 
-        if not is_contain_eos_token(symbol_graph_copy.finals):
+        if not _ordered_set_contains_eos_token(symbol_graph_copy.finals):
             # `EOS_TOKEN` symbols for the initials and finals.
             symbol_special_eos_final = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
 
@@ -266,18 +263,15 @@ def cast_symbol_graph(
         return symbol_graph_copy
 
     else:
-        if is_contain_eos_token(symbol_graph_copy.initials) and is_contain_eos_token(
-            symbol_graph_copy.finals
-        ):
+        if _ordered_set_contains_eos_token(
+            symbol_graph_copy.initials
+        ) and _ordered_set_contains_eos_token(symbol_graph_copy.finals):
             return symbol_graph_copy
         return symbol_graph_copy
 
 
-# [TODO] Needs better name for `symbol_graph_partial_lhs` and `symbol_graph_partial_rhs`~
-# Maybe `symbol_graph_partial_accumul` and `symbol_graph_partial_last`
-# [TODO] Extend the logic to `NONE_ANY` and `NONE_ONCE`
-def build_symbol_graph(symbol_def: str) -> SymbolGraph:  # type: ignore
-    queue_symbol_def = convert_str_def_to_str_queue(symbol_def)
+def build_symbol_graph(symbol_def: str) -> SymbolGraph:
+    queue_symbol_def = _convert_str_def_to_str_queue(symbol_def)
 
     # We build graphs from the left, (_1 `def_1` (_2 `def_2` 2_) `def_3` (_3 def_4 3_) 1_),
     # Each time, we encounter an opening delimiter `(, [, {`, we build what we accumulated before it.

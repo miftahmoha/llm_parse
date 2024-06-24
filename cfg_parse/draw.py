@@ -1,9 +1,8 @@
-import networkx as nx
 import matplotlib.pyplot as plt
+import networkx as nx
 
-from cfg_parser.base import OrderedSet, Symbol, SymbolGraph
-from cfg_parser.functions import get_symbols_from_generated_symbol_graph
-from cfg_parser.base import SymbolType
+from cfg_parse.base import Symbol, SymbolGraph, SymbolType
+from cfg_parse.cfg_build.helpers import get_symbols_from_generated_symbol_graph
 
 
 def draw_symbol_graph(symbol_graph: SymbolGraph):
