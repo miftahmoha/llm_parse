@@ -54,28 +54,11 @@ class OrderedSet(Generic[T]):
         return deepcopy(self)
 
 
-class SymbolType(Enum):
-    TERMINAL = 1
-    NON_TERMINAL = 2
-    REGEX = 3
-    SPECIAL = 4
-
-
-class SymbolGraphType(Enum):
-    STANDARD = 1
-    NONE_ANY = 2
-    NONE_ONCE = 3
-
-
-def generate_uuid():
-    return uuid.uuid4()
-
-
 @dataclass
 class Symbol:
     content: str
-    s_type: SymbolType
-    s_id: uuid.UUID = field(default_factory=generate_uuid)
+    s_type: "SymbolType"
+    s_id: uuid.UUID = field(default_factory=lambda: uuid.uuid4())
 
     def __hash__(self):
         return hash((self.content, self.s_type, self.s_id))
@@ -92,34 +75,41 @@ class Symbol:
         )
 
 
-def nodes_default():
-    return defaultdict(OrderedSet)
-
-
-def property_default():
-    return OrderedSet([])
+class SymbolType(Enum):
+    TERMINAL = 1
+    NON_TERMINAL = 2
+    REGEX = 3
+    SPECIAL = 4
 
 
 @dataclass
 class SymbolGraph:
-    nodes: dict[Symbol, OrderedSet[Symbol]] = field(default_factory=nodes_default)
-    initials: OrderedSet[Symbol] = field(default_factory=property_default)
-    finals: OrderedSet[Symbol] = field(default_factory=property_default)
+    tree: dict[Symbol, OrderedSet[Symbol]] = field(
+        default_factory=lambda: defaultdict(OrderedSet)
+    )
+    initials: OrderedSet[Symbol] = field(default_factory=OrderedSet)
+    finals: OrderedSet[Symbol] = field(default_factory=OrderedSet)
 
     def __eq__(self, other) -> bool:
         if isinstance(other, SymbolGraph):
             return (
                 (self.initials == other.initials)
-                and (self.nodes == other.nodes)
+                and (self.tree == other.tree)
                 and (self.finals == other.finals)
             )
         return NotImplemented
 
     def __bool__(self) -> bool:
-        return bool(self.initials) and bool(self.nodes) and bool(self.finals)
+        return bool(self.initials) and bool(self.tree) and bool(self.finals)
 
     def copy(self):
         return deepcopy(self)
+
+
+class SymbolGraphType(Enum):
+    STANDARD = 1
+    NONE_ANY = 2
+    NONE_ONCE = 3
 
 
 @dataclass
@@ -127,6 +117,3 @@ class SymbolGraphState:
     graph: SymbolGraph
     label: str
     state: Optional[Symbol] = None
-
-
-CFGGenerationState = Optional[Deque[SymbolGraphState]]

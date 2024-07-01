@@ -12,3 +12,7 @@ class InvalidDelimiters(Exception):
 
 class InvalidGrammar(Exception):
     pass
+
+
+class ParsingError(Exception):
+    pass

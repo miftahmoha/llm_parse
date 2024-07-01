@@ -4,10 +4,10 @@ from cfg_parse.base import OrderedSet, Symbol, SymbolGraph, SymbolGraphType, Sym
 from cfg_parse.cfg_build.helpers import (
     _convert_str_def_to_str_queue,
     _convert_str_to_symbol,
-    _discard_single_nodes,
-    _get_symbol_antecedents,
-    _get_symbols_with_content,
-    _ordered_set_contains_eos_token,
+    _discard_single_nodes_from_tree,
+    _get_symbol_predecessors,
+    _get_symbol_from_content_attr,
+    _tree_contains_eos_symbol,
 )
 
 
@@ -25,7 +25,7 @@ def construct_symbol_subgraph(
     # Add the node to the initials.
     symbol_graph.initials.add(initial)
     # Add the node to the symbol graph.
-    symbol_graph.nodes[initial]
+    symbol_graph.tree[initial]
 
     # Single node
     if len(symbols_str) == 1:
@@ -33,7 +33,7 @@ def construct_symbol_subgraph(
             [initial]
         )
         # Node without connections
-        symbol_graph.nodes[initial]
+        symbol_graph.tree[initial]
         return symbol_graph
 
     symbol_previous = initial
@@ -48,11 +48,11 @@ def construct_symbol_subgraph(
             # Add the node to the initials.
             symbol_graph.initials.add(node)
             # Add the node to the symbol graph
-            symbol_graph.nodes[node]
+            symbol_graph.tree[node]
             symbol_previous = node
             continue
 
-        symbol_graph.nodes[symbol_previous].add(node)
+        symbol_graph.tree[symbol_previous].add(node)
 
         symbol_previous = node
 
@@ -67,13 +67,13 @@ def connect_symbol_graph(
     symbol_graph_lhs: SymbolGraph,
     symbol_graph_rhs: SymbolGraph,
 ) -> SymbolGraph:
-    if not symbol_graph_lhs.nodes and not symbol_graph_rhs.nodes:
+    if not symbol_graph_lhs.tree and not symbol_graph_rhs.tree:
         return SymbolGraph()
 
-    elif not symbol_graph_lhs.nodes:
+    elif not symbol_graph_lhs.tree:
         return symbol_graph_rhs
 
-    elif not symbol_graph_rhs.nodes:
+    elif not symbol_graph_rhs.tree:
         return symbol_graph_lhs
 
     # Passing by value and not by reference, avoids modifying the original dicts.
@@ -81,29 +81,33 @@ def connect_symbol_graph(
     symbol_graph_rhs_copy = symbol_graph_rhs.copy()
 
     # Single node symbols will connect through their `INITIALS` and `FINALS`.
-    symbol_graph_lhs_copy.nodes = _discard_single_nodes(symbol_graph_lhs_copy.nodes)
-    symbol_graph_rhs_copy.nodes = _discard_single_nodes(symbol_graph_rhs_copy.nodes)
+    symbol_graph_lhs_copy.tree = _discard_single_nodes_from_tree(
+        symbol_graph_lhs_copy.tree
+    )
+    symbol_graph_rhs_copy.tree = _discard_single_nodes_from_tree(
+        symbol_graph_rhs_copy.tree
+    )
 
     # Union the connections between both symbol graphs.
-    symbol_graph_nodes_out = symbol_graph_lhs_copy.nodes | symbol_graph_rhs_copy.nodes
+    symbol_graph_tree_out = symbol_graph_lhs_copy.tree | symbol_graph_rhs_copy.tree
 
-    # Connect the left `FINALS` (also takes care of `EOS_TOKENS`) with the right `INITIALS`.
+    # Connect the left `FINALS` (also takes care of `EOS_SYMBOLS`) with the right `INITIALS`.
     for symbol_final in symbol_graph_lhs_copy.finals:
-        if symbol_final.content == "EOS_TOKEN":
-            symbol_antecedents = _get_symbol_antecedents(
-                symbol_graph_nodes_out, symbol_final
+        if symbol_final.content == "EOS_SYMBOL":
+            symbol_predecessors = _get_symbol_predecessors(
+                symbol_graph_tree_out, symbol_final
             )
-            # Discarding the connection to `EOS_TOKEN` symbol.
-            for symbol_antecedent in symbol_antecedents:
-                symbol_graph_nodes_out[symbol_antecedent].discard(symbol_final)
-            symbol_final = symbol_antecedents
+            # Discarding the connection to `EOS_SYMBOL` symbol.
+            for symbol_predecessor in symbol_predecessors:
+                symbol_graph_tree_out[symbol_predecessor].discard(symbol_final)
+            symbol_final = symbol_predecessors
 
         if not isinstance(symbol_final, list):
             symbol_final = [symbol_final]
 
         for symbol_initial in symbol_graph_rhs_copy.initials:
             for final in symbol_final:
-                symbol_graph_nodes_out[final].add(symbol_initial)
+                symbol_graph_tree_out[final].add(symbol_initial)
 
     # Keeps the initials from the left symbol graph and the finals from the right symbol graph.
     symbol_graph_initials_out = symbol_graph_lhs_copy.initials
@@ -111,7 +115,7 @@ def connect_symbol_graph(
 
     return SymbolGraph(
         initials=symbol_graph_initials_out,
-        nodes=symbol_graph_nodes_out,
+        tree=symbol_graph_tree_out,
         finals=symbol_graph_finals_out,
     )
 
@@ -120,13 +124,13 @@ def union_symbol_graph(
     symbol_graph_lhs: SymbolGraph,
     symbol_graph_rhs: SymbolGraph,
 ) -> SymbolGraph:
-    if not symbol_graph_lhs.nodes and not symbol_graph_rhs.nodes:
+    if not symbol_graph_lhs.tree and not symbol_graph_rhs.tree:
         return SymbolGraph()
 
-    elif not symbol_graph_lhs.nodes:
+    elif not symbol_graph_lhs.tree:
         return symbol_graph_rhs
 
-    elif not symbol_graph_rhs.nodes:
+    elif not symbol_graph_rhs.tree:
         return symbol_graph_lhs
 
     # Passing by value and not by reference, avoids modifying the original dicts.
@@ -135,21 +139,21 @@ def union_symbol_graph(
 
     # Extend the left `INITIALS` to the right `INITIALS`, `|` is not used because it discards the order (*for testing).
 
-    # Removes duplicates (if they exist) `EOS_TOKEN` symbols from `INITIALS`.
-    if _ordered_set_contains_eos_token(
+    # Removes duplicates (if they exist) `EOS_SYMBOL` symbols from `INITIALS`.
+    if _tree_contains_eos_symbol(
         symbol_graph_lhs_copy.initials
-    ) and _ordered_set_contains_eos_token(symbol_graph_rhs_copy.initials):
-        symbol_special_eos_token = _get_symbols_with_content(
-            symbol_graph_rhs_copy.initials, "EOS_TOKEN"
+    ) and _tree_contains_eos_symbol(symbol_graph_rhs_copy.initials):
+        symbol_special_eos_symbol = _get_symbol_from_content_attr(
+            symbol_graph_rhs_copy.initials, "EOS_SYMBOL"
         )
-        symbol_graph_rhs_copy.initials.discard(symbol_special_eos_token[0])
+        symbol_graph_rhs_copy.initials.discard(symbol_special_eos_symbol[0])
 
     symbol_graph_initials_out = symbol_graph_lhs_copy.initials.extend(
         symbol_graph_rhs_copy.initials
     )
 
     # Union two `symbol_graphs`, both without their `INITIALS` and `FINALS`.
-    symbol_graph_nodes_out = symbol_graph_lhs_copy.nodes | symbol_graph_rhs_copy.nodes
+    symbol_graph_tree_out = symbol_graph_lhs_copy.tree | symbol_graph_rhs_copy.tree
 
     # Extend the left `FINALS` to the right `FINALS`, `|` is not used because it discards the order (*for testing).
     symbol_graph_finals_out = symbol_graph_lhs_copy.finals.extend(
@@ -158,12 +162,11 @@ def union_symbol_graph(
 
     return SymbolGraph(
         initials=symbol_graph_initials_out,
-        nodes=symbol_graph_nodes_out,
+        tree=symbol_graph_tree_out,
         finals=symbol_graph_finals_out,
     )
 
 
-# [TODO] Needs more consideration~
 # Delimiters such as `NONE_ANY`, `NONE_ONE` can enduce changes in the structure that
 # the connection and the union can't express.
 # For example when `NONE_ANY` delimiters nest a composite definition such as
@@ -177,95 +180,95 @@ def cast_symbol_graph(
     symbol_graph_copy = symbol_graph.copy()
 
     if symbol_graph_cast_type == SymbolGraphType.NONE_ANY:
-        # Add a `EOS_TOKEN` to the `initials`, since it can be `NONE`.
+        # Add a `EOS_SYMBOL` to the `initials`, since it can be `NONE`.
         # Add a loop since it's a `(A..Z)*` expression, last element `Z` should connect to the first element `A`.
-        # Should add a `EOS_TOKEN` to `A` and `Z` (symbols should be different) if `Z` is not connected to any node (always add it, if it's connected to some node remove it afterwards while connecting the graphs)
+        # Should add a `EOS_SYMBOL` to `A` and `Z` (symbols should be different) if `Z` is not connected to any node (always add it, if it's connected to some node remove it afterwards while connecting the graphs)
         # How?
-        # During connection, we'll have `EOS_TOKEN` -> `Node` -> replace `EOS_TOKEN` with the antecedent of `EOS_TOKEN`, disconnect antecedent from 'EOS_TOKEN`.
-        # Each node has a unique identifier, so we'll always be able to track the right antecedent.
+        # During connection, we'll have `EOS_SYMBOL` -> `Node` -> replace `EOS_SYMBOL` with the predecessor of `EOS_SYMBOL`, disconnect predecessor from 'EOS_SYMBOL`.
+        # Each node has a unique identifier, so we'll always be able to track the right predecessor.
 
         for symbol_final in symbol_graph_copy.finals:
-            if symbol_final.content == "EOS_TOKEN":
-                # [PERFORMANCE] Could raise a flag here and avoid calling is_contain_eos_token(symbol_graph_copy.finals).
-                # symbol_antecedent = get_symbol_antecedent(
-                #     symbol_graph_copy.nodes, symbol_final
+            if symbol_final.content == "EOS_SYMBOL":
+                # [PERFORMANCE] Could raise a flag here and avoid calling is_contain_EOS_SYMBOL(symbol_graph_copy.finals).
+                # symbol_predecessor = get_symbol_predecessor(
+                #     symbol_graph_copy.tree, symbol_final
                 # )
-                symbol_antecedents = _get_symbol_antecedents(
-                    symbol_graph_copy.nodes, symbol_final
+                symbol_predecessors = _get_symbol_predecessors(
+                    symbol_graph_copy.tree, symbol_final
                 )
 
-                # Removing the `EOS_TOKEN` node.
+                # Removing the `EOS_SYMBOL` node.
                 # [NOTE(to me)]I don't think it should be removed, if a subgraph of type `NONE_ANY` in inside a graph `NON_ANY`,
-                # you still want to have the `EOS_TOKEN` in the subgraph.
+                # you still want to have the `EOS_SYMBOL` in the subgraph.
                 # del symbol_graph_copy[symbol_final]
 
-                # Removing the connection of the antecedent with `EOS_TOKEN`.
-                # symbol_graph_copy.nodes[symbol_antecedent].discard(symbol_final)
-                # symbol_final = symbol_antecedent
-                symbol_final = symbol_antecedents
+                # Removing the connection of the predecessor with `EOS_SYMBOL`.
+                # symbol_graph_copy.tree[symbol_predecessor].discard(symbol_final)
+                # symbol_final = symbol_predecessor
+                symbol_final = symbol_predecessors
 
             if not isinstance(symbol_final, list):
                 symbol_final = [symbol_final]
 
             # [TODO] Commentary.
             for symbol_initial in symbol_graph_copy.initials:
-                if symbol_initial.content == "EOS_TOKEN":
+                if symbol_initial.content == "EOS_SYMBOL":
                     continue
                 for final in symbol_final:
-                    symbol_graph_copy.nodes[final].add(symbol_initial)
+                    symbol_graph_copy.tree[final].add(symbol_initial)
 
-        if _ordered_set_contains_eos_token(
+        if _tree_contains_eos_symbol(
             symbol_graph_copy.initials
-        ) and _ordered_set_contains_eos_token(symbol_graph_copy.finals):
+        ) and _tree_contains_eos_symbol(symbol_graph_copy.finals):
             return symbol_graph_copy
 
-        if not _ordered_set_contains_eos_token(symbol_graph_copy.initials):
-            # `EOS_TOKEN` symbol for the initials.
-            symbol_special_eos_initial = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
+        if not _tree_contains_eos_symbol(symbol_graph_copy.initials):
+            # `EOS_SYMBOL` symbol for the initials.
+            symbol_special_eos_initial = Symbol("EOS_SYMBOL", SymbolType.TERMINAL)
 
-            # Add `EOS_TOKEN` as `initials`.
+            # Add `EOS_SYMBOL` as `initials`.
             symbol_graph_copy.initials.add(symbol_special_eos_initial)
 
-            # Add `EOS_TOKEN` as node.
-            symbol_graph_copy.nodes[symbol_special_eos_initial]
+            # Add `EOS_SYMBOL` as node.
+            symbol_graph_copy.tree[symbol_special_eos_initial]
 
-        if not _ordered_set_contains_eos_token(symbol_graph_copy.finals):
-            # `EOS_TOKEN` symbols for the initials and finals.
-            symbol_special_eos_final = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
+        if not _tree_contains_eos_symbol(symbol_graph_copy.finals):
+            # `EOS_SYMBOL` symbols for the initials and finals.
+            symbol_special_eos_final = Symbol("EOS_SYMBOL", SymbolType.TERMINAL)
 
-            # Connect the `EOS_TOKEN` in `FINALS` with the elements in the "previous" (before cast) `FINALS`.
+            # Connect the `EOS_SYMBOL` in `FINALS` with the elements in the "previous" (before cast) `FINALS`.
             for symbol_final in symbol_graph_copy.finals:
-                symbol_graph_copy.nodes[symbol_final].add(symbol_special_eos_final)
+                symbol_graph_copy.tree[symbol_final].add(symbol_special_eos_final)
 
-            # Clear the finals since the `EOS_TOKEN` will be the only element in the finals.
+            # Clear the finals since the `EOS_SYMBOL` will be the only element in the finals.
             symbol_graph_copy.finals = OrderedSet([])
 
-            # Add `EOS_TOKEN` as `finals`.
+            # Add `EOS_SYMBOL` as `finals`.
             symbol_graph_copy.finals.add(symbol_special_eos_final)
 
-            # Add `EOS_TOKEN` as node.
-            # symbol_graph_copy.nodes[symbol_special_eos_final]
+            # Add `EOS_SYMBOL` as node.
+            # symbol_graph_copy.tree[symbol_special_eos_final]
 
         return symbol_graph_copy
 
     elif symbol_graph_cast_type == SymbolGraphType.NONE_ONCE:
-        # Add a `EOS_TOKEN` to the SOURCE, since it can be `NONE`.
+        # Add a `EOS_SYMBOL` to the SOURCE, since it can be `NONE`.
 
-        # Check if `EOS_TOKEN` already exists.
+        # Check if `EOS_SYMBOL` already exists.
         for symbol_initial in symbol_graph_copy.initials:
-            if symbol_initial.content == "EOS_TOKEN":
+            if symbol_initial.content == "EOS_SYMBOL":
                 return symbol_graph_copy
 
-        # Add `EOS_TOKEN` as `initials`
-        symbol_special_eos_initial = Symbol("EOS_TOKEN", SymbolType.SPECIAL)
+        # Add `EOS_SYMBOL` as `initials`
+        symbol_special_eos_initial = Symbol("EOS_SYMBOL", SymbolType.TERMINAL)
         symbol_graph_copy.initials.add(symbol_special_eos_initial)
-        symbol_graph_copy.nodes[symbol_special_eos_initial]
+        symbol_graph_copy.tree[symbol_special_eos_initial]
         return symbol_graph_copy
 
     else:
-        if _ordered_set_contains_eos_token(
+        if _tree_contains_eos_symbol(
             symbol_graph_copy.initials
-        ) and _ordered_set_contains_eos_token(symbol_graph_copy.finals):
+        ) and _tree_contains_eos_symbol(symbol_graph_copy.finals):
             return symbol_graph_copy
         return symbol_graph_copy
 
