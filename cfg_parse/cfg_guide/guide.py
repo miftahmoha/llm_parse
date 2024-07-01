@@ -1,4 +1,3 @@
-import random
 import warnings
 from collections import defaultdict, deque
 from copy import deepcopy
@@ -6,7 +5,6 @@ from functools import wraps
 from typing import Deque, Optional
 
 from cfg_parse.base import (
-    CFGGenerationState,
     Symbol,
     SymbolGraph,
     SymbolGraphState,
@@ -14,40 +12,14 @@ from cfg_parse.base import (
 )
 from cfg_parse.cfg_build.build import build_symbol_graph
 from cfg_parse.cfg_guide.helpers import (
-    _add_stateful_symbol_graph_layer_to_generation_state_stack,
+    _push_stateful_symbol_graph_layer_to_stack,
     _divide_cfg_grammar_into_definitions,
     _exist_infinite_loop_around_non_terminal_symbols,
     _get_non_terminal_loop_str_from_generation_state_stack,
     _turn_symbol_graph_into_stateful_obj,
 )
 
-
-def get_content_str_from_symbols(symbols: list[Symbol]) -> list[str]:
-    symbols_str: list[str] = []
-    for symbol in symbols:
-        symbols_str.append(symbol.content)
-    return symbols_str
-
-
-def get_symbol_obj_from_chosen_symbol_str(
-    next_terminal_symbols: list[Symbol],
-    chosen_symbol_str: str,
-) -> Symbol:
-    chosen_symbols: list[Symbol] = []
-
-    for symbol in next_terminal_symbols:
-        # [NOTE] `chosen_symbol_str` could represent more than one symbol in different paths. Send a warning and randomly pick a symbol with equal probability.
-        if symbol.content == chosen_symbol_str:
-            chosen_symbols.append(symbol)
-
-    if len(chosen_symbols) > 2:
-        warnings.warn(
-            "Chosen symbol present in multiple paths, one will be picked with random probability."
-        )
-        chosen_symbol = random.choice(chosen_symbols)
-        return chosen_symbol
-
-    return chosen_symbols[0]
+CFGGenerationState = Optional[Deque[SymbolGraphState]]
 
 
 def build_cfg_grammar_into_symbol_graphs(cfg_grammar: str) -> dict[str, SymbolGraph]:
@@ -66,9 +38,9 @@ def get_next_terminals(
     generation_state: CFGGenerationState = None,
     chosen_symbol: Optional[Symbol] = None,
 ):
-    next_terminal_symbols_w_history: dict[
-        Symbol, Deque[SymbolGraphState]
-    ] = defaultdict(deque)
+    next_terminal_symbols_w_history: dict[Symbol, Deque[SymbolGraphState]] = (
+        defaultdict(deque)
+    )
 
     def recurse_guide(
         generation_state: CFGGenerationState = None,
@@ -100,7 +72,7 @@ def get_next_terminals(
             last_visit_symbol = generation_state[-1].state
             # Get the next nodes according to `last_visit_symbol`, which refers to the last visited (non-terminal) symbol from where the stack was addded.
             next_symbols = (
-                last_visit_graph.nodes[last_visit_symbol]
+                last_visit_graph.tree[last_visit_symbol]
                 if last_visit_symbol is not None
                 else last_visit_graph.initials
             )
@@ -117,18 +89,16 @@ def get_next_terminals(
 
                 # Create an additional layer in the stack.
                 if next_symbol.s_type == SymbolType.NON_TERMINAL:
-                    last_generation_state = (
-                        _add_stateful_symbol_graph_layer_to_generation_state_stack(
-                            deepcopy(generation_state),
-                            built_cfg_grammar[next_symbol.content],
-                            next_symbol,
-                        )
+                    last_generation_state = _push_stateful_symbol_graph_layer_to_stack(
+                        deepcopy(generation_state),
+                        built_cfg_grammar[next_symbol.content],
+                        next_symbol,
                     )
                     recurse_guide(last_generation_state)
 
             return
 
-        if chosen_symbol.content == "EOS_TOKEN":
+        if chosen_symbol.content == "EOS_SYMBOL":
             generation_state.pop()
             # Should return the last label, but as a symbol of the last symbol graph.
             recurse_guide(deepcopy(generation_state))
@@ -137,7 +107,7 @@ def get_next_terminals(
         # Poping the last graph.
         last_visit_graph = generation_state[-1].graph
         # Get the next nodes according to `chosen_symbol`, which refers to the (terminal) symbol chosen by the LLM.
-        next_symbols = last_visit_graph.nodes[chosen_symbol]
+        next_symbols = last_visit_graph.tree[chosen_symbol]
         # Update the state for `SymbolGraphState` to the (terminal) symbol chosen by the LLM.
         generation_state[-1].state = chosen_symbol
 
@@ -153,12 +123,10 @@ def get_next_terminals(
 
             # Create an additional layer in the stack.
             if next_symbol.s_type == SymbolType.NON_TERMINAL:
-                generation_state = (
-                    _add_stateful_symbol_graph_layer_to_generation_state_stack(
-                        deepcopy(generation_state),  # type: ignore
-                        built_cfg_grammar[next_symbol.content],
-                        next_symbol,
-                    )
+                generation_state = _push_stateful_symbol_graph_layer_to_stack(
+                    deepcopy(generation_state),  # type: ignore
+                    built_cfg_grammar[next_symbol.content],
+                    next_symbol,
                 )
 
     recurse_guide(generation_state, chosen_symbol)
@@ -178,7 +146,7 @@ def clear_dict_before_call(dict_name: str):
     return decorator
 
 
-class CFGGetNextTerminals:
+class CFGGuide:
     built_cfg_grammar: dict[str, SymbolGraph]
     next_terminals_w_history: dict[Symbol, CFGGenerationState]
 
@@ -202,8 +170,9 @@ class CFGGetNextTerminals:
                 return
             else:
                 raise ValueError(
-                    "`CFGGenerationState` is None while `chosen_symbol` is not."
+                    "`CFGGenerationState` is `None` while `chosen_symbol` is not."
                 )
+
         # [NOTE] This is way more complicated than it seems, this can loop X times then choose
         # another path. Should it be stopped? What about some `LIMIT_LOOP_NON_TERMINAL_DEFAULT`?
         if _exist_infinite_loop_around_non_terminal_symbols(generation_state):
@@ -219,10 +188,25 @@ class CFGGetNextTerminals:
             last_visit_symbol = generation_state[-1].state
             # Get the next nodes according to `last_visit_symbol`, which refers to the last visited (non-terminal) symbol from where the stack was addded.
             next_symbols = (
-                last_visit_graph.nodes[last_visit_symbol]
+                last_visit_graph.tree[last_visit_symbol]
                 if last_visit_symbol is not None
                 else last_visit_graph.initials
             )
+
+            # [NOTE] Sometimes `next_symbols` is returned empty, this can happen when:
+            # (1) You pop from the stack, and the place where you land was a `END-OF-DEFINITON`
+            # non-terminal symbol (we return a None chosen symbol after poping from the stack).
+            # (2) The second case where we pass a `chosen_symbol = None` is at the beggining,
+            # this would then happen if `start` is connected to one single terminal symbol.
+            # Handles reaching the end of a symbol graph (`next_symbols` being empty).
+            if not next_symbols:
+                generation_state.pop()
+                # Handles reaching the end of stack.
+                if not generation_state:
+                    return
+                # Should return the last label, but as a symbol of the last symbol graph.
+                self.get_next_terminals(deepcopy(generation_state))
+                return
 
             for next_symbol in next_symbols:
                 if next_symbol.s_type in [
@@ -236,30 +220,35 @@ class CFGGetNextTerminals:
 
                 # Create an additional layer in the stack.
                 if next_symbol.s_type == SymbolType.NON_TERMINAL:
-                    last_generation_state = (
-                        _add_stateful_symbol_graph_layer_to_generation_state_stack(
-                            deepcopy(generation_state),
-                            self.built_cfg_grammar[next_symbol.content],
-                            next_symbol,
-                        )
+                    last_generation_state = _push_stateful_symbol_graph_layer_to_stack(
+                        deepcopy(generation_state),
+                        self.built_cfg_grammar[next_symbol.content],
+                        next_symbol,
                     )
                     self.get_next_terminals(last_generation_state)
 
             return
 
-        if chosen_symbol.content == "EOS_TOKEN":
+        # Poping the last graph.
+        last_visit_graph = generation_state[-1].graph
+
+        # Get the next nodes according to `chosen_symbol`, which refers to the (terminal) symbol chosen by the LLM.
+        next_symbols = last_visit_graph.tree[chosen_symbol]
+
+        # Handles reaching the end of a symbol graph (`next_symbols` being empty).
+        if not next_symbols:
             generation_state.pop()
+            # Handles reaching the end of stack.
+            if not generation_state:
+                return
             # Should return the last label, but as a symbol of the last symbol graph.
             self.get_next_terminals(deepcopy(generation_state))
             return
 
-        # Poping the last graph.
-        last_visit_graph = generation_state[-1].graph
-        # Get the next nodes according to `chosen_symbol`, which refers to the (terminal) symbol chosen by the LLM.
-        next_symbols = last_visit_graph.nodes[chosen_symbol]
         # Update the state for `SymbolGraphState` to the (terminal) symbol chosen by the LLM.
         generation_state[-1].state = chosen_symbol
 
+        # [NOTE] Do something about this?
         for next_symbol in next_symbols:
             if next_symbol.s_type in [
                 SymbolType.TERMINAL,
@@ -270,8 +259,8 @@ class CFGGetNextTerminals:
 
             # Create an additional layer in the stack.
             if next_symbol.s_type == SymbolType.NON_TERMINAL:
-                generation_state = (
-                    _add_stateful_symbol_graph_layer_to_generation_state_stack(
+                self.get_next_terminals(
+                    _push_stateful_symbol_graph_layer_to_stack(
                         deepcopy(generation_state),  # type: ignore
                         self.built_cfg_grammar[next_symbol.content],
                         next_symbol,
