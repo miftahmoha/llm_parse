@@ -8,6 +8,16 @@ from cfg_parse.base import Symbol, SymbolGraph, SymbolGraphState, SymbolType
 from cfg_parse.exceptions import InvalidGrammar, ParsingError
 
 
+def _check_for_errors_grammar_def(current_rule: str, definition: str):
+    return NotImplemented
+
+
+def _is_not_valid_rule_name(rule: str):
+    # Special characters REGEX.
+    regex = re.compile(r"[@_!#$%^&*()<>?/\\|}~:]")
+    return regex.search(rule) is not None
+
+
 def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
     divided_cfg_grammar_dict: dict[str, str] = {}
     current_rule: str = ""
@@ -23,7 +33,7 @@ def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
 
         if ":" not in line:
             if not current_rule:
-                raise InvalidGrammar(f"Missing `:` in '''{line}'''")
+                raise InvalidGrammar(f"Missing `:` in '''{line}'''.")
 
             divided_cfg_grammar_dict[current_rule] += " " + line
 
@@ -32,12 +42,15 @@ def _divide_cfg_grammar_into_definitions(grammar: str) -> dict[str, str]:
 
             if len(parts) != 2:
                 # Handles multiple use of ':' in a single definition.
-                raise InvalidGrammar(f"Invalid grammar rule: {line}")
+                raise InvalidGrammar(f"Invalid grammar rule: {line}.")
 
             current_rule, definition = parts
 
+            if _is_not_valid_rule_name(current_rule):
+                raise InvalidGrammar(f"Invalid rule name: {current_rule}.")
+
             if current_rule in divided_cfg_grammar_dict:
-                raise InvalidGrammar(f"Redefinition of grammar rule: {line}")
+                raise InvalidGrammar(f"Redefinition of grammar rule: {current_rule}.")
 
             divided_cfg_grammar_dict[current_rule] = definition.strip()
 
